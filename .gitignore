@@ -1,0 +1,77 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+env/
+ENV/
+env.bak/
+.env.bak/
+.venv/
+venv/
+venv.bak/
+pip-wheel-metadata/
+*.egg
+*.egg-info/
+dist/
+build/
+develop-eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+pytest-debug.log
+*.log
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Local data
+backend/chroma_db/
+backend/novel.db
+
+# Node / Next.js
+node_modules/
+.npm/
+.yarn/
+.pnp/
+.pnp.js
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json.*
+
+# Testing / tooling artifacts
+coverage-final.json
+test-results/
+reports/
+
+# Misc
+*.bak
+*.tmp
+*.orig
+*.rej
