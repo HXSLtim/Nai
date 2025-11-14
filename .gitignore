@@ -17,6 +17,7 @@ Thumbs.db
 *.py[cod]
 *.pyo
 *.pyd
+*.pyc
 *.so
 .Python
 env/

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API连接测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 API连接测试工具</h1>
+    
+    <div class="info test-result">
+        <strong>API地址:</strong> <span id="apiUrl">http://192.168.31.101:8000/api</span>
+    </div>
+    
+    <button onclick="testHealth()">测试健康检查</button>
+    <button onclick="testCORS()">测试CORS</button>
+    <button onclick="testLogin()">测试登录接口</button>
+    <button onclick="clearResults()">清除结果</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://192.168.31.101:8000/api';
+        
+        function addResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            results.appendChild(div);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testHealth() {
+            addResult('🔍 测试健康检查接口...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE.replace('/api', '')}/api/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ 健康检查成功: ${JSON.stringify(data)}`, 'success');
+                } else {
+                    addResult(`❌ 健康检查失败: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                addResult(`🚨 健康检查错误: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testCORS() {
+            addResult('🌐 测试CORS配置...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE.replace('/api', '')}/api/health`, {
+                    method: 'OPTIONS',
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                };
+                
+                addResult(`✅ CORS头信息: <pre>${JSON.stringify(corsHeaders, null, 2)}</pre>`, 'success');
+            } catch (error) {
+                addResult(`🚨 CORS测试错误: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLogin() {
+            addResult('🔐 测试登录接口结构...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'test',
+                        password: 'test'
+                    }),
+                });
+                
+                const data = await response.text();
+                
+                if (response.status === 422) {
+                    addResult(`✅ 登录接口可访问 (验证错误是正常的): ${response.status}`, 'success');
+                } else if (response.status === 401) {
+                    addResult(`✅ 登录接口可访问 (认证失败是正常的): ${response.status}`, 'success');
+                } else {
+                    addResult(`📡 登录接口响应: ${response.status} - ${data}`, 'info');
+                }
+            } catch (error) {
+                addResult(`🚨 登录接口错误: ${error.message}`, 'error');
+            }
+        }
+        
+        // 页面加载时自动测试
+        window.onload = function() {
+            addResult('🚀 API测试工具已加载', 'info');
+            addResult(`📍 当前页面: ${window.location.href}`, 'info');
+            addResult(`🎯 目标API: ${API_BASE}`, 'info');
+        };
+    </script>
+</body>
+</html>
