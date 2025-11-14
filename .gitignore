@@ -13,7 +13,7 @@ Thumbs.db
 !.env.local.example
 
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
@@ -32,19 +32,24 @@ pip-wheel-metadata/
 dist/
 build/
 develop-eggs/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
 .coverage
 .coverage.*
 coverage/
-htmlcov/
+**/htmlcov/
 pytest-debug.log
 *.log
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
+.cache/
+**/.cache/
+cache/
+tmp/
+temp/
 
 # Local data
 backend/chroma_db/
