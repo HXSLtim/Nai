@@ -51,8 +51,9 @@ cache/
 tmp/
 temp/
 
-# Local data
+# Vector stores / local data
 backend/chroma_db/
+backend/chroma_db/**/*.bin
 backend/novel.db
 
 # Node / Next.js
@@ -62,7 +63,10 @@ node_modules/
 .pnp/
 .pnp.js
 .next/
+frontend/.next/
+frontend/.next/cache/
 out/
+frontend/out/
 .turbo/
 npm-debug.log*
 yarn-debug.log*
