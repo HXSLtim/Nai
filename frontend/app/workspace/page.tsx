@@ -53,11 +53,12 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import WarningIcon from '@mui/icons-material/Warning';
 import { api } from '@/lib/api';
-import type { Novel, Chapter, StyleSample } from '@/types';
+import type { Novel, Chapter, StyleSample, AgentWorkflowTrace } from '@/types';
 import type { SSEEvent } from '@/lib/sse';
 
 // 工作台组件
 import AiWritingAssistant from '@/components/workspace/AiWritingAssistant';
+import WorkflowPanel from '@/components/workspace/WorkflowPanel';
 import TextRewriter from '@/components/workspace/TextRewriter';
 import ConsistencyChecker from '@/components/workspace/ConsistencyChecker';
 import PlotOptionsGenerator from '@/components/workspace/PlotOptionsGenerator';
@@ -128,6 +129,9 @@ function WorkspacePageContent() {
   const isApplyingHistoryRef = useRef(false);
   const streamingTimerRef = useRef<number | null>(null);
   const sseEventIdRef = useRef(0);
+
+  // 多Agent工作流追踪（用于右侧工作流可视化侧栏）
+  const [workflowTrace, setWorkflowTrace] = useState<AgentWorkflowTrace | null>(null);
 
   const hasUnsavedChanges = title !== lastSavedTitle || content !== lastSavedContent;
 
@@ -815,6 +819,9 @@ function WorkspacePageContent() {
           }}
         >
           <Box sx={{ p: 2, height: '100%', overflow: 'auto' }}>
+            {/* 多Agent工作流可视化 */}
+            <WorkflowPanel workflowTrace={workflowTrace} />
+
             {/* AI续写助手 */}
             <AiWritingAssistant
               novelId={novelId}
@@ -822,6 +829,7 @@ function WorkspacePageContent() {
               currentContent={content}
               onContentGenerated={handleContentGenerated}
               onError={setError}
+              onWorkflowTraceChange={setWorkflowTrace}
             />
 
             {/* 局部改写 */}

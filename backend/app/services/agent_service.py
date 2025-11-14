@@ -1,6 +1,7 @@
-"""
-多Agent服务
-实现基于LangGraph的三Agent协作工作流
+"""多Agent服务
+
+实现基于LangGraph的三Agent协作工作流，并在内部构建Agent工作流追踪，
+便于前端可视化展示各个Agent节点的执行过程和数据流。
 """
 from typing import TypedDict, Annotated, Dict, Any, List
 from langgraph.graph import StateGraph, END
@@ -11,8 +12,11 @@ from app.models.schemas import (
     GenerationRequest,
     GenerationResponse,
     AgentOutput,
-    AgentType
+    AgentType,
+    ConsistencyCheckResult,
+    ConsistencyCheckType,
 )
+from app.models.workflow_schemas import AgentWorkflowStep, AgentWorkflowTrace
 from app.services.rag_service import rag_service
 from app.services.consistency_service import consistency_service
 from loguru import logger
@@ -46,6 +50,9 @@ class NovelGenerationState(TypedDict):
 
     # 重试次数
     retry_count: int
+
+    # 工作流步骤（序列化后的AgentWorkflowStep字典列表）
+    workflow_steps: List[Dict[str, Any]]
 
 
 # ========== Agent服务类 ==========
@@ -115,6 +122,7 @@ class AgentService:
         max_chapter = current_chapter if current_chapter > 0 else None
 
         # 检索世界观相关内容
+        step_start = datetime.utcnow()
         worldview_context = await rag_service.retrieve_worldview(
             novel_id=state["novel_id"],
             query=state["prompt"],
@@ -128,10 +136,43 @@ class AgentService:
             character_name="主角",  # 简化处理
             max_chapter=max_chapter,
         )
+        step_end = datetime.utcnow()
+
+        # 记录工作流步骤
+        steps = state.get("workflow_steps", [])
+        retrieve_step = AgentWorkflowStep(
+            id="retrieve_context",
+            parent_id=None,
+            type="rag",
+            agent_name="RAGService",
+            title="检索上下文",
+            description="从RAG中检索世界观和角色相关上下文，避免剧透。",
+            input={
+                "novel_id": state["novel_id"],
+                "chapter": state["chapter"],
+                "prompt": state["prompt"],
+                "max_chapter": max_chapter,
+            },
+            output={
+                "worldview_chunks": len(worldview_context or []),
+                "character_chunks": len(character_context or []),
+            },
+            data_sources={
+                "worldview_context": worldview_context[:5],
+                "character_context": character_context[:5],
+            },
+            llm={},
+            status="completed",
+            started_at=step_start,
+            finished_at=step_end,
+            duration_ms=int((step_end - step_start).total_seconds() * 1000),
+        )
+        steps.append(retrieve_step.model_dump())
 
         return {
             "worldview_context": worldview_context,
-            "character_context": character_context
+            "character_context": character_context,
+            "workflow_steps": steps,
         }
 
     async def _agent_a_worldview(self, state: NovelGenerationState) -> Dict:
@@ -158,16 +199,48 @@ class AgentService:
         ])
 
         # 调用LLM
+        step_start = datetime.utcnow()
         chain = prompt | self.llm_simple
         response = await chain.ainvoke({
             "prompt": state["prompt"],
             "worldview_context": "\n".join(state.get("worldview_context", ["无相关世界观信息"]))
         })
+        step_end = datetime.utcnow()
 
         worldview_output = response.content
         logger.info(f"Agent A输出：{worldview_output[:50]}...")
 
-        return {"worldview_output": worldview_output}
+        steps = state.get("workflow_steps", [])
+        step = AgentWorkflowStep(
+            id="agent_a_worldview",
+            parent_id="retrieve_context",
+            type="llm",
+            agent_name="AgentAWorldview",
+            title="世界观描写Agent",
+            description="基于检索到的世界观上下文生成环境与氛围描写。",
+            input={
+                "prompt": state["prompt"],
+                "target_length_hint": "150-200",
+            },
+            output={
+                "preview": worldview_output[:80],
+                "length": len(worldview_output),
+            },
+            data_sources={
+                "worldview_context": state.get("worldview_context", [])[:5],
+            },
+            llm={
+                "model": settings.OPENAI_MODEL_SIMPLE,
+                "temperature": 0.7,
+            },
+            status="completed",
+            started_at=step_start,
+            finished_at=step_end,
+            duration_ms=int((step_end - step_start).total_seconds() * 1000),
+        )
+        steps.append(step.model_dump())
+
+        return {"worldview_output": worldview_output, "workflow_steps": steps}
 
     async def _agent_b_character(self, state: NovelGenerationState) -> Dict:
         """
@@ -197,17 +270,49 @@ class AgentService:
         ])
 
         # 调用LLM
+        step_start = datetime.utcnow()
         chain = prompt | self.llm_simple
         response = await chain.ainvoke({
             "prompt": state["prompt"],
             "worldview_output": state["worldview_output"],
             "character_context": "\n".join(state.get("character_context", ["无相关角色信息"]))
         })
+        step_end = datetime.utcnow()
 
         character_output = response.content
         logger.info(f"Agent B输出：{character_output[:50]}...")
 
-        return {"character_output": character_output}
+        steps = state.get("workflow_steps", [])
+        step = AgentWorkflowStep(
+            id="agent_b_character",
+            parent_id="agent_a_worldview",
+            type="llm",
+            agent_name="AgentBCharacter",
+            title="角色描写Agent",
+            description="基于世界观描写和角色信息生成对话与心理描写。",
+            input={
+                "prompt": state["prompt"],
+                "worldview_preview": state.get("worldview_output", "")[:80],
+            },
+            output={
+                "preview": character_output[:80],
+                "length": len(character_output),
+            },
+            data_sources={
+                "character_context": state.get("character_context", [])[:5],
+            },
+            llm={
+                "model": settings.OPENAI_MODEL_SIMPLE,
+                "temperature": 0.7,
+            },
+            status="completed",
+            started_at=step_start,
+            finished_at=step_end,
+            duration_ms=int((step_end - step_start).total_seconds() * 1000),
+        )
+        steps.append(step.model_dump())
+
+        return {"character_output": character_output, "workflow_steps": steps}
 
     async def _agent_c_plot(self, state: NovelGenerationState) -> Dict:
         """
@@ -237,6 +342,7 @@ class AgentService:
         ])
 
         # 使用复杂模型
+        step_start = datetime.utcnow()
         chain = prompt | self.llm_complex
         response = await chain.ainvoke({
             "prompt": state["prompt"],
@@ -244,11 +350,40 @@ class AgentService:
             "character_output": state["character_output"],
             "target_length": state["target_length"]
         })
+        step_end = datetime.utcnow()
 
         plot_output = response.content
         logger.info(f"Agent C输出：{plot_output[:50]}...（共{len(plot_output)}字）")
 
-        return {"plot_output": plot_output}
+        steps = state.get("workflow_steps", [])
+        step = AgentWorkflowStep(
+            id="agent_c_plot",
+            parent_id="agent_b_character",
+            type="llm",
+            agent_name="AgentCPlot",
+            title="剧情控制Agent",
+            description="整合世界观与角色内容，生成最终剧情输出。",
+            input={
+                "prompt": state["prompt"],
+                "target_length": state["target_length"],
+            },
+            output={
+                "preview": plot_output[:80],
+                "length": len(plot_output),
+            },
+            data_sources={},
+            llm={
+                "model": settings.OPENAI_MODEL_COMPLEX,
+                "temperature": 0.8,
+            },
+            status="completed",
+            started_at=step_start,
+            finished_at=step_end,
+            duration_ms=int((step_end - step_start).total_seconds() * 1000),
+        )
+        steps.append(step.model_dump())
+
+        return {"plot_output": plot_output, "workflow_steps": steps}
 
     async def _consistency_check(self, state: NovelGenerationState) -> Dict:
         """
@@ -257,6 +392,8 @@ class AgentService:
         """
         logger.info("执行一致性检查")
 
+        step_start = datetime.utcnow()
+
         # 调用一致性检查服务
         result = await consistency_service.check_content(
             novel_id=state["novel_id"],
@@ -264,8 +401,38 @@ class AgentService:
             chapter=state["chapter"],
             current_day=state["current_day"]
         )
+        step_end = datetime.utcnow()
 
-        return {"consistency_result": result}
+        steps = state.get("workflow_steps", [])
+        consistency_step = AgentWorkflowStep(
+            id="consistency_check",
+            parent_id="agent_c_plot",
+            type="consistency",
+            agent_name="ConsistencyService",
+            title="一致性检查",
+            description="调用一致性检查服务验证生成内容是否违反世界观或角色设定。",
+            input={
+                "novel_id": state["novel_id"],
+                "chapter": state["chapter"],
+                "current_day": state["current_day"],
+            },
+            output={
+                "has_conflict": result.get("has_conflict", False),
+                "violation_count": len(result.get("violations", [])),
+            },
+            data_sources={
+                "consistency_layer_results": result.get("layer_results", {}),
+                "consistency_workflow_trace": result.get("workflow_trace"),
+            },
+            llm={},
+            status="completed",
+            started_at=step_start,
+            finished_at=step_end,
+            duration_ms=int((step_end - step_start).total_seconds() * 1000),
+        )
+        steps.append(consistency_step.model_dump())
+
+        return {"consistency_result": result, "workflow_steps": steps}
 
     def _should_retry(self, state: NovelGenerationState) -> str:
         """
@@ -317,11 +484,83 @@ class AgentService:
             "worldview_context": [],
             "character_context": [],
             "consistency_result": {},
-            "retry_count": 0
+            "retry_count": 0,
+            "workflow_steps": [],
         }
 
         # 执行工作流
         final_state = await self.workflow.ainvoke(initial_state)
+
+        # 从一致性结果中构建结构化的一致性检查列表
+        consistency_result = final_state.get("consistency_result", {}) or {}
+        layer_results = consistency_result.get("layer_results", {}) or {}
+
+        consistency_checks: List[ConsistencyCheckResult] = []
+
+        # 规则引擎
+        rule_layer = layer_results.get("rule_engine") or {}
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.RULE_ENGINE,
+                is_valid=bool(rule_layer.get("is_valid", True)),
+                violations=list(rule_layer.get("violations", [])),
+            )
+        )
+
+        # 知识图谱
+        kg_layer = layer_results.get("knowledge_graph") or {}
+        kg_violations = list(kg_layer.get("violations", []))
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.KNOWLEDGE_GRAPH,
+                is_valid=not bool(kg_violations),
+                violations=kg_violations,
+            )
+        )
+
+        # 时间线
+        timeline_layer = layer_results.get("timeline") or {}
+        timeline_is_valid = bool(timeline_layer.get("is_valid", True))
+        timeline_violations: List[str] = []
+        if not timeline_is_valid and timeline_layer.get("reason"):
+            timeline_violations = [str(timeline_layer.get("reason"))]
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.TIMELINE,
+                is_valid=timeline_is_valid,
+                violations=timeline_violations,
+            )
+        )
+
+        # 情绪状态机（目前为占位）
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.EMOTION,
+                is_valid=True,
+                violations=[],
+            )
+        )
+
+        # 构建Agent工作流追踪
+        steps_data = final_state.get("workflow_steps", []) or []
+        steps: List[AgentWorkflowStep] = []
+        for item in steps_data:
+            try:
+                steps.append(AgentWorkflowStep(**item))
+            except Exception:
+                # 忽略单个步骤解析错误，避免影响整体响应
+                logger.warning("解析AgentWorkflowStep失败，已跳过一条步骤数据")
+                continue
+
+        workflow_trace = AgentWorkflowTrace(
+            run_id=f"agent-generate-{request.novel_id}-{request.chapter}-{int(datetime.utcnow().timestamp() * 1000)}",
+            trigger="generation.generate_content",
+            novel_id=request.novel_id,
+            chapter_id=request.chapter,
+            user_id=None,
+            summary=f"小说{request.novel_id} 第{request.chapter}章的多Agent内容生成",
+            steps=steps,
+        )
 
         # 构建响应
         response = GenerationResponse(
@@ -331,22 +570,23 @@ class AgentService:
             agent_outputs=[
                 AgentOutput(
                     agent_type=AgentType.WORLDVIEW,
-                    content=final_state["worldview_output"]
+                    content=final_state["worldview_output"],
                 ),
                 AgentOutput(
                     agent_type=AgentType.CHARACTER,
-                    content=final_state["character_output"]
+                    content=final_state["character_output"],
                 ),
                 AgentOutput(
                     agent_type=AgentType.PLOT,
-                    content=final_state["plot_output"]
-                )
+                    content=final_state["plot_output"],
+                ),
             ],
-            consistency_checks=[],  # TODO: 添加详细检查结果
+            consistency_checks=consistency_checks,
             retry_count=final_state["retry_count"],
             generated_at=datetime.now(),
             worldview_context=final_state.get("worldview_context", []),
             character_context=final_state.get("character_context", []),
+            workflow_trace=workflow_trace,
         )
 
         logger.info(f"内容生成完成，共{len(response.final_content)}字")

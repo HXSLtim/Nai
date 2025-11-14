@@ -90,3 +90,37 @@ export interface ChapterCreate {
   title: string;
   content: string;
 }
+
+/**
+ * Agent工作流中单个步骤
+ */
+export interface AgentWorkflowStep {
+  id: string;
+  parent_id?: string | null;
+  type: string;
+  agent_name?: string | null;
+  title: string;
+  description?: string | null;
+  input: Record<string, any>;
+  output: Record<string, any>;
+  data_sources: Record<string, any>;
+  llm: Record<string, any>;
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+}
+
+/**
+ * 单次Agent工作流运行的完整追踪
+ */
+export interface AgentWorkflowTrace {
+  run_id: string;
+  trigger: string;
+  novel_id?: number | null;
+  chapter_id?: number | null;
+  user_id?: number | null;
+  summary?: string | null;
+  steps: AgentWorkflowStep[];
+  created_at: string;
+}

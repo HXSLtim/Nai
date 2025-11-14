@@ -695,9 +695,16 @@ async def continue_chapter(
             prompt=prompt,
             chapter=chapter.chapter_number,
             current_day=1,
-            target_length=request.target_length
+            target_length=request.target_length,
         )
         response = await agent_service.generate_content(gen_request)
+
+        # 工作流追踪（用于前端可视化多Agent执行过程）
+        workflow_trace = (
+            response.workflow_trace.model_dump()
+            if getattr(response, "workflow_trace", None) is not None
+            else None
+        )
 
         logger.info(
             f"章节续写成功：小说{request.novel_id}，章节{chapter.chapter_number}，生成{len(response.final_content)}字，节奏={request.pace}，基调={request.tone}"
@@ -711,6 +718,7 @@ async def continue_chapter(
             "rag_style_context": rag_style_context,
             "rag_story_context": response.worldview_context + response.character_context,
             "agent_outputs": [output.model_dump() for output in response.agent_outputs],
+            "workflow_trace": workflow_trace,
             "settings": {
                 "pace": request.pace,
                 "tone": request.tone,
@@ -747,6 +755,7 @@ async def continue_chapter_stream(
         rag_style_context = base_result.get("rag_style_context") or []
         rag_story_context = base_result.get("rag_story_context") or []
         agent_outputs = base_result.get("agent_outputs") or []
+        workflow_trace = base_result.get("workflow_trace")
         settings = base_result.get("settings") or {}
         length = int(base_result.get("length") or len(full_content))
 
@@ -783,6 +792,7 @@ async def continue_chapter_stream(
                 "rag_style_context": rag_style_context,
                 "rag_story_context": rag_story_context,
                 "agent_outputs": agent_outputs,
+                "workflow_trace": workflow_trace,
                 "settings": settings,
                 "word_count": length,
             }

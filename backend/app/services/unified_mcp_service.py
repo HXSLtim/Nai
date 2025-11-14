@@ -15,6 +15,7 @@ from app.models.worldview_schemas import (
     NovelAnalysisRequest, NovelAnalysisResponse,
     NovelOptimizationRequest, NovelOptimizationResponse
 )
+from app.models.workflow_schemas import AgentWorkflowStep, AgentWorkflowTrace
 from app.services.character_mcp_service import character_mcp_service
 from app.services.agent_service import agent_service
 from app.services.mcp_audit_service import mcp_audit_service
@@ -154,7 +155,26 @@ class UnifiedMCPService:
                 # 执行操作
                 handler = self.target_handlers[action.target_type]
                 result = await handler(db, action, user_id)
-                
+
+                # 尝试从小说级别分析/优化结果中提取工作流追踪，挂到统一响应上
+                workflow_trace: Optional[AgentWorkflowTrace] = None
+                try:
+                    inner_result: Optional[Dict[str, Any]] = None
+                    if isinstance(result, dict):
+                        if isinstance(result.get("analysis_result"), dict):
+                            inner_result = result["analysis_result"]
+                        elif isinstance(result.get("optimization_result"), dict):
+                            inner_result = result["optimization_result"]
+
+                    if inner_result is not None:
+                        inner_trace = inner_result.get("workflow_trace")
+                        if isinstance(inner_trace, AgentWorkflowTrace):
+                            workflow_trace = inner_trace
+                        elif isinstance(inner_trace, dict):
+                            workflow_trace = AgentWorkflowTrace(**inner_trace)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"解析MCP工作流追踪失败: {e}")
+
                 response = UnifiedMCPResponse(
                     success=True,
                     target_type=action.target_type,
@@ -163,7 +183,8 @@ class UnifiedMCPService:
                     result=result,
                     message=f"操作 {action.action} 在 {action.target_type} 上执行成功",
                     ai_reasoning=result.get("ai_reasoning"),
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.utcnow(),
+                    workflow_trace=workflow_trace,
                 )
                 
                 await self._log_operation(db, action, response, user_id, start_time, ip_address, user_agent)
@@ -232,26 +253,205 @@ class UnifiedMCPService:
             if not novel or novel.user_id != user_id:
                 raise ValueError("小说不存在或无权访问")
             
-            analysis_results = {}
+            analysis_results: Dict[str, Any] = {}
+            steps: List[AgentWorkflowStep] = []
+
+            # 生成本次分析的工作流运行ID
+            run_id = f"mcp-analyze-{request.novel_id}-{int(datetime.utcnow().timestamp() * 1000)}"
+
+            # 入口步骤：记录本次分析的基本信息
+            entry_start = datetime.utcnow()
+            entry_step = AgentWorkflowStep(
+                id="analysis_entry",
+                parent_id=None,
+                type="mcp_analysis",
+                agent_name="UnifiedMCPService",
+                title="小说全面分析入口",
+                description="统一MCP对小说进行多维度全面分析的入口步骤",
+                input={
+                    "novel_id": request.novel_id,
+                    "analysis_scope": request.analysis_scope,
+                    "analysis_depth": request.analysis_depth,
+                    "include_suggestions": request.include_suggestions,
+                },
+                output={
+                    "novel_title": getattr(novel, "title", None),
+                },
+                data_sources={},
+                llm={},
+                status="completed",
+                started_at=entry_start,
+                finished_at=entry_start,
+                duration_ms=0,
+            )
+            steps.append(entry_step)
             
-            # 根据分析范围执行不同的分析
+            # 根据分析范围执行不同的分析，并为每个维度产生活动步骤
             if "worldview" in request.analysis_scope:
-                analysis_results["worldview_analysis"] = await self._analyze_worldview(db, request.novel_id)
+                worldview_start = datetime.utcnow()
+                worldview_analysis = await self._analyze_worldview(db, request.novel_id)
+                worldview_end = datetime.utcnow()
+                analysis_results["worldview_analysis"] = worldview_analysis
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="worldview_analysis",
+                        parent_id="analysis_entry",
+                        type="analysis",
+                        agent_name="WorldviewAnalyzer",
+                        title="世界观分析",
+                        description="分析小说世界观的一致性、完整性和复杂度。",
+                        input={"novel_id": request.novel_id},
+                        output={"analysis": worldview_analysis},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=worldview_start,
+                        finished_at=worldview_end,
+                        duration_ms=int((worldview_end - worldview_start).total_seconds() * 1000),
+                    )
+                )
             
             if "character" in request.analysis_scope:
-                analysis_results["character_analysis"] = await self._analyze_characters(db, request.novel_id)
+                character_start = datetime.utcnow()
+                character_analysis = await self._analyze_characters(db, request.novel_id)
+                character_end = datetime.utcnow()
+                analysis_results["character_analysis"] = character_analysis
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="character_analysis",
+                        parent_id="analysis_entry",
+                        type="analysis",
+                        agent_name="CharacterAnalyzer",
+                        title="角色分析",
+                        description="分析角色数量、深度以及关系网络复杂度。",
+                        input={"novel_id": request.novel_id},
+                        output={"analysis": character_analysis},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=character_start,
+                        finished_at=character_end,
+                        duration_ms=int((character_end - character_start).total_seconds() * 1000),
+                    )
+                )
             
             if "plot" in request.analysis_scope:
-                analysis_results["plot_analysis"] = await self._analyze_plot(db, request.novel_id)
+                plot_start = datetime.utcnow()
+                plot_analysis = await self._analyze_plot(db, request.novel_id)
+                plot_end = datetime.utcnow()
+                analysis_results["plot_analysis"] = plot_analysis
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="plot_analysis",
+                        parent_id="analysis_entry",
+                        type="analysis",
+                        agent_name="PlotAnalyzer",
+                        title="情节分析",
+                        description="分析情节结构、节奏以及冲突设计。",
+                        input={"novel_id": request.novel_id},
+                        output={"analysis": plot_analysis},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=plot_start,
+                        finished_at=plot_end,
+                        duration_ms=int((plot_end - plot_start).total_seconds() * 1000),
+                    )
+                )
             
             if "style" in request.analysis_scope:
-                analysis_results["style_analysis"] = await self._analyze_style(db, request.novel_id)
+                style_start = datetime.utcnow()
+                style_analysis = await self._analyze_style(db, request.novel_id)
+                style_end = datetime.utcnow()
+                analysis_results["style_analysis"] = style_analysis
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="style_analysis",
+                        parent_id="analysis_entry",
+                        type="analysis",
+                        agent_name="StyleAnalyzer",
+                        title="文风分析",
+                        description="分析文风一致性、可读性和语气特点。",
+                        input={"novel_id": request.novel_id},
+                        output={"analysis": style_analysis},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=style_start,
+                        finished_at=style_end,
+                        duration_ms=int((style_end - style_start).total_seconds() * 1000),
+                    )
+                )
             
             if "consistency" in request.analysis_scope:
-                analysis_results["consistency_analysis"] = await self._analyze_consistency(db, request.novel_id)
+                consistency_start = datetime.utcnow()
+                consistency_analysis = await self._analyze_consistency(db, request.novel_id)
+                consistency_end = datetime.utcnow()
+                analysis_results["consistency_analysis"] = consistency_analysis
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="consistency_analysis",
+                        parent_id="analysis_entry",
+                        type="analysis",
+                        agent_name="ConsistencyAnalyzer",
+                        title="一致性分析",
+                        description="从角色、世界观和时间线等维度分析整体一致性。",
+                        input={"novel_id": request.novel_id},
+                        output={"analysis": consistency_analysis},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=consistency_start,
+                        finished_at=consistency_end,
+                        duration_ms=int((consistency_end - consistency_start).total_seconds() * 1000),
+                    )
+                )
             
             # 综合评估
+            overall_start = datetime.utcnow()
             overall_assessment = await self._generate_overall_assessment(analysis_results, request)
+            overall_end = datetime.utcnow()
+
+            steps.append(
+                AgentWorkflowStep(
+                    id="overall_assessment",
+                    parent_id="analysis_entry",
+                    type="summary",
+                    agent_name="UnifiedMCPService",
+                    title="综合评估",
+                    description="基于各维度分析结果生成整体评估和改进建议。",
+                    input={
+                        "analysis_scope": request.analysis_scope,
+                        "include_suggestions": request.include_suggestions,
+                    },
+                    output={
+                        "overall_score": overall_assessment.get("overall_score"),
+                        "strengths_count": len(overall_assessment.get("strengths") or []),
+                        "weaknesses_count": len(overall_assessment.get("weaknesses") or []),
+                    },
+                    data_sources={},
+                    llm={},
+                    status="completed",
+                    started_at=overall_start,
+                    finished_at=overall_end,
+                    duration_ms=int((overall_end - overall_start).total_seconds() * 1000),
+                )
+            )
+
+            workflow_trace = AgentWorkflowTrace(
+                run_id=run_id,
+                trigger="mcp.analyze_novel",
+                novel_id=request.novel_id,
+                chapter_id=None,
+                user_id=user_id,
+                summary=f"小说{request.novel_id}的全面分析",
+                steps=steps,
+            )
             
             return NovelAnalysisResponse(
                 novel_id=request.novel_id,
@@ -259,7 +459,8 @@ class UnifiedMCPService:
                 **analysis_results,
                 **overall_assessment,
                 analysis_timestamp=datetime.utcnow(),
-                confidence_score=0.85
+                confidence_score=0.85,
+                workflow_trace=workflow_trace,
             )
             
         except Exception as e:
@@ -278,32 +479,201 @@ class UnifiedMCPService:
             if not novel or novel.user_id != user_id:
                 raise ValueError("小说不存在或无权访问")
             
-            optimization_results = {}
+            optimization_results: Dict[str, Any] = {}
+            steps: List[AgentWorkflowStep] = []
+
+            # 生成本次优化的工作流运行ID
+            run_id = f"mcp-optimize-{request.novel_id}-{int(datetime.utcnow().timestamp() * 1000)}"
+
+            # 入口步骤：记录本次优化的目标与范围
+            entry_start = datetime.utcnow()
+            entry_step = AgentWorkflowStep(
+                id="optimization_entry",
+                parent_id=None,
+                type="mcp_optimization",
+                agent_name="UnifiedMCPService",
+                title="小说全面优化入口",
+                description="统一MCP对小说进行系统性优化的入口步骤",
+                input={
+                    "novel_id": request.novel_id,
+                    "optimization_goals": request.optimization_goals,
+                    "target_areas": request.target_areas,
+                    "preserve_elements": request.preserve_elements,
+                    "optimization_intensity": request.optimization_intensity,
+                },
+                output={
+                    "novel_title": getattr(novel, "title", None),
+                },
+                data_sources={},
+                llm={},
+                status="completed",
+                started_at=entry_start,
+                finished_at=entry_start,
+                duration_ms=0,
+            )
+            steps.append(entry_step)
             
-            # 根据目标区域执行不同的优化
+            # 根据目标区域执行不同的优化，并为每个维度产生活动步骤
             if "worldview" in request.target_areas:
-                optimization_results["worldview_optimizations"] = await self._optimize_worldview(
+                worldview_start = datetime.utcnow()
+                worldview_opt = await self._optimize_worldview(
                     db, request.novel_id, request.optimization_goals
+                )
+                worldview_end = datetime.utcnow()
+                optimization_results["worldview_optimizations"] = worldview_opt
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="worldview_optimization",
+                        parent_id="optimization_entry",
+                        type="optimization",
+                        agent_name="WorldviewOptimizer",
+                        title="世界观优化",
+                        description="针对世界观设定给出具体优化建议和实施步骤。",
+                        input={
+                            "novel_id": request.novel_id,
+                            "goals": request.optimization_goals,
+                        },
+                        output={"optimizations": worldview_opt},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=worldview_start,
+                        finished_at=worldview_end,
+                        duration_ms=int((worldview_end - worldview_start).total_seconds() * 1000),
+                    )
                 )
             
             if "character" in request.target_areas:
-                optimization_results["character_optimizations"] = await self._optimize_characters(
+                character_start = datetime.utcnow()
+                character_opt = await self._optimize_characters(
                     db, request.novel_id, request.optimization_goals
+                )
+                character_end = datetime.utcnow()
+                optimization_results["character_optimizations"] = character_opt
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="character_optimization",
+                        parent_id="optimization_entry",
+                        type="optimization",
+                        agent_name="CharacterOptimizer",
+                        title="角色优化",
+                        description="针对角色深度和关系网络给出优化方案。",
+                        input={
+                            "novel_id": request.novel_id,
+                            "goals": request.optimization_goals,
+                        },
+                        output={"optimizations": character_opt},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=character_start,
+                        finished_at=character_end,
+                        duration_ms=int((character_end - character_start).total_seconds() * 1000),
+                    )
                 )
             
             if "plot" in request.target_areas:
-                optimization_results["plot_optimizations"] = await self._optimize_plot(
+                plot_start = datetime.utcnow()
+                plot_opt = await self._optimize_plot(
                     db, request.novel_id, request.optimization_goals
+                )
+                plot_end = datetime.utcnow()
+                optimization_results["plot_optimizations"] = plot_opt
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="plot_optimization",
+                        parent_id="optimization_entry",
+                        type="optimization",
+                        agent_name="PlotOptimizer",
+                        title="情节优化",
+                        description="针对情节节奏与冲突设计给出优化方案。",
+                        input={
+                            "novel_id": request.novel_id,
+                            "goals": request.optimization_goals,
+                        },
+                        output={"optimizations": plot_opt},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=plot_start,
+                        finished_at=plot_end,
+                        duration_ms=int((plot_end - plot_start).total_seconds() * 1000),
+                    )
                 )
             
             if "style" in request.target_areas:
-                optimization_results["style_optimizations"] = await self._optimize_style(
+                style_start = datetime.utcnow()
+                style_opt = await self._optimize_style(
                     db, request.novel_id, request.optimization_goals
+                )
+                style_end = datetime.utcnow()
+                optimization_results["style_optimizations"] = style_opt
+
+                steps.append(
+                    AgentWorkflowStep(
+                        id="style_optimization",
+                        parent_id="optimization_entry",
+                        type="optimization",
+                        agent_name="StyleOptimizer",
+                        title="文风优化",
+                        description="针对文风和叙述技巧给出优化方案。",
+                        input={
+                            "novel_id": request.novel_id,
+                            "goals": request.optimization_goals,
+                        },
+                        output={"optimizations": style_opt},
+                        data_sources={},
+                        llm={},
+                        status="completed",
+                        started_at=style_start,
+                        finished_at=style_end,
+                        duration_ms=int((style_end - style_start).total_seconds() * 1000),
+                    )
                 )
             
             # 生成实施计划
+            plan_start = datetime.utcnow()
             implementation_plan = await self._generate_implementation_plan(
                 optimization_results, request
+            )
+            plan_end = datetime.utcnow()
+
+            steps.append(
+                AgentWorkflowStep(
+                    id="implementation_plan",
+                    parent_id="optimization_entry",
+                    type="plan",
+                    agent_name="UnifiedMCPService",
+                    title="优化实施计划生成",
+                    description="基于各维度优化结果生成整体实施计划和优先级。",
+                    input={
+                        "optimization_goals": request.optimization_goals,
+                        "target_areas": request.target_areas,
+                    },
+                    output={
+                        "implementation_plan_length": len(implementation_plan.get("implementation_plan") or []),
+                        "priority_order": implementation_plan.get("priority_order"),
+                    },
+                    data_sources={},
+                    llm={},
+                    status="completed",
+                    started_at=plan_start,
+                    finished_at=plan_end,
+                    duration_ms=int((plan_end - plan_start).total_seconds() * 1000),
+                )
+            )
+
+            workflow_trace = AgentWorkflowTrace(
+                run_id=run_id,
+                trigger="mcp.optimize_novel",
+                novel_id=request.novel_id,
+                chapter_id=None,
+                user_id=user_id,
+                summary=f"小说{request.novel_id}的全面优化",
+                steps=steps,
             )
             
             return NovelOptimizationResponse(
@@ -312,7 +682,8 @@ class UnifiedMCPService:
                 **optimization_results,
                 **implementation_plan,
                 optimization_timestamp=datetime.utcnow(),
-                confidence_score=0.88
+                confidence_score=0.88,
+                workflow_trace=workflow_trace,
             )
             
         except Exception as e:

@@ -8,6 +8,7 @@ import type {
   Chapter,
   ChapterCreate,
   StyleSample,
+  AgentWorkflowTrace,
 } from '@/types';
 import { readSSEFromResponse, SSEEvent } from '@/lib/sse';
 
@@ -296,12 +297,13 @@ export const api = {
     style_features?: string[];
     style_sample_id?: number | null;
     rag_style_context?: string[];
-     rag_story_context?: string[];
+    rag_story_context?: string[];
     agent_outputs?: {
       agent_type: string;
       content: string;
       metadata?: Record<string, any>;
     }[];
+    workflow_trace?: AgentWorkflowTrace | null;
     settings?: {
       pace: string;
       tone: string;

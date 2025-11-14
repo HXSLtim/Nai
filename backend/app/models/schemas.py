@@ -7,6 +7,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
+from app.models.workflow_schemas import AgentWorkflowTrace
+
 
 # ========== 用户认证相关模型 ==========
 
@@ -306,6 +308,10 @@ class GenerationResponse(BaseModel):
     worldview_context: List[str] = Field(default_factory=list)
     character_context: List[str] = Field(default_factory=list)
     rag_results: List[Dict[str, Any]] = Field(default_factory=list)
+    workflow_trace: Optional[AgentWorkflowTrace] = Field(
+        default=None,
+        description="本次多Agent生成流程的工作流追踪信息，供前端可视化展示",
+    )
 
 
 class InitNovelResponse(BaseModel):

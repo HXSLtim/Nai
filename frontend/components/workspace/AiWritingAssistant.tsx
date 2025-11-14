@@ -33,6 +33,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TuneIcon from '@mui/icons-material/Tune';
 import { api } from '@/lib/api';
 import type { SSEEvent } from '@/lib/sse';
+import type { AgentWorkflowTrace } from '@/types';
 
 interface AiWritingAssistantProps {
   novelId: number;
@@ -40,6 +41,8 @@ interface AiWritingAssistantProps {
   currentContent: string;
   onContentGenerated: (newContent: string) => void;
   onError: (error: string) => void;
+  /** 工作流追踪变更回调，用于外部工作流可视化侧栏 */
+  onWorkflowTraceChange?: (trace: AgentWorkflowTrace | null) => void;
 }
 
 export default function AiWritingAssistant({
@@ -48,6 +51,7 @@ export default function AiWritingAssistant({
   currentContent,
   onContentGenerated,
   onError,
+  onWorkflowTraceChange,
 }: AiWritingAssistantProps) {
   // AI生成状态
   const [aiGenerating, setAiGenerating] = useState(false);
@@ -101,6 +105,8 @@ export default function AiWritingAssistant({
     setGenerationStep('正在连接AI...');
     setGeneratedText('');
     setSseEvents([]);
+    // 每次新一轮生成前重置工作流追踪
+    onWorkflowTraceChange?.(null);
 
     try {
       await api.continueChapterStream(
@@ -138,8 +144,14 @@ export default function AiWritingAssistant({
             });
           },
           onMetadata: (metadata: any) => {
+            // 更新文风提示
             if (metadata.style_features) {
               setGenerationStep(`应用文风特征: ${metadata.style_features.slice(0, 2).join(', ')}`);
+            }
+
+            // 透出工作流追踪数据，供右侧工作流面板使用
+            if (metadata.workflow_trace) {
+              onWorkflowTraceChange?.(metadata.workflow_trace as AgentWorkflowTrace);
             }
           },
           onDone: () => {
