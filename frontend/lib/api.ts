@@ -291,6 +291,7 @@ export const api = {
     tone?: string;
     use_rag_style?: boolean;
     style_sample_id?: number | null;
+    plot_direction_hint?: string;
   }): Promise<{
     content: string;
     length: number;
@@ -341,6 +342,7 @@ export const api = {
       tone?: string;
       use_rag_style?: boolean;
       style_sample_id?: number | null;
+      plot_direction_hint?: string;
     },
     callbacks: {
       onChunk: (chunk: string) => void;

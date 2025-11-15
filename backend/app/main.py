@@ -4,7 +4,7 @@ FastAPI主入口文件
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import generation, health, auth, novels, style, research, rag, consistency, characters, mcp
+from app.api.routes import generation, health, auth, novels, style, research, rag, consistency, characters, mcp, review
 from loguru import logger
 import sys
 
@@ -45,6 +45,7 @@ app.include_router(style.router, prefix="/api/style", tags=["文风样本"])
 app.include_router(research.router, prefix="/api/research", tags=["资料检索"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG调试"])
 app.include_router(consistency.router, prefix="/api/consistency", tags=["一致性检查"])
+app.include_router(review.router, prefix="/api/review", tags=["章节审核"])
 
 
 @app.on_event("startup")
@@ -53,6 +54,8 @@ async def startup_event():
     logger.info(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 启动中...")
     logger.info(f"📝 文档地址: http://localhost:8000/docs")
     logger.info(f"🔧 调试模式: {settings.DEBUG}")
+    logger.info(f"🤖 LLM配置: base={settings.OPENAI_API_BASE}, complex={settings.OPENAI_MODEL_COMPLEX}, simple={settings.OPENAI_MODEL_SIMPLE}")
+    logger.info(f"📋 已注册路由: 健康检查, 用户认证, 小说管理, 角色管理, 统一MCP控制, 内容生成, 文风样本, 资料检索, RAG调试, 一致性检查, 章节审核")
 
 
 @app.on_event("shutdown")

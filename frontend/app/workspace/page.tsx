@@ -123,6 +123,9 @@ function WorkspacePageContent() {
   // 文风样本状态
   const [selectedStyleSampleId, setSelectedStyleSampleId] = useState<number | null>(null);
 
+  // 剧情走向提示（由PlotOptionsGenerator提供，供AI续写时参考）
+  const [plotDirectionHint, setPlotDirectionHint] = useState<string | null>(null);
+
   // 撤销/重做状态
   const [contentHistory, setContentHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -132,6 +135,9 @@ function WorkspacePageContent() {
 
   // 多Agent工作流追踪（用于右侧工作流可视化侧栏）
   const [workflowTrace, setWorkflowTrace] = useState<AgentWorkflowTrace | null>(null);
+
+  // AI续写助手的 ref，用于外部触发续写
+  const aiWritingAssistantRef = useRef<{ triggerContinue: () => void } | null>(null);
 
   const hasUnsavedChanges = title !== lastSavedTitle || content !== lastSavedContent;
 
@@ -202,6 +208,9 @@ function WorkspacePageContent() {
 
   // 处理AI生成的内容
   const handleContentGenerated = (newContent: string) => {
+    console.log('[DEBUG] handleContentGenerated 被调用');
+    console.log('[DEBUG] 新内容长度:', newContent.length);
+    console.log('[DEBUG] 新内容前100字:', newContent.substring(0, 100));
     setContent(newContent);
     // 添加到历史记录
     if (!isApplyingHistoryRef.current) {
@@ -209,6 +218,31 @@ function WorkspacePageContent() {
       newHistory.push(newContent);
       setContentHistory(newHistory);
       setHistoryIndex(newHistory.length - 1);
+    }
+  };
+
+  // 将AI生成的内容应用到下一章节（自动创建）
+  const handleApplyGeneratedToNextChapter = async (generatedText: string) => {
+    if (!novelId) {
+      setError('未找到当前小说');
+      return;
+    }
+
+    try {
+      // 计算下一章节号：在现有章节号中取最大值再加1
+      const nextNumber = Math.max(...chapters.map(c => c.chapter_number), 0) + 1;
+      const nextTitle = `第${nextNumber}章`;
+
+      const newChapter = await api.createChapter(novelId, {
+        chapter_number: nextNumber,
+        title: nextTitle,
+        content: generatedText,
+      });
+
+      // 跳转到新创建的章节，loadWorkspace 会在 chapterId 变化后自动加载
+      router.push(`/workspace?novel=${novelId}&chapter=${newChapter.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建下一章节失败');
     }
   };
 
@@ -233,9 +267,29 @@ function WorkspacePageContent() {
   };
 
   // 处理剧情选项选择
-  const handlePlotSelected = (option: any) => {
-    // 可以将选择的剧情方向保存到状态中，供AI续写时参考
-    console.log('选择的剧情方向:', option);
+  const handlePlotSelected = (option: { id: number; title: string; summary: string; impact?: string | null; risk?: string | null }) => {
+    const parts: string[] = [];
+    parts.push(`${option.title}`);
+    parts.push(option.summary);
+    if (option.impact) {
+      parts.push(`影响：${option.impact}`);
+    }
+    if (option.risk) {
+      parts.push(`风险：${option.risk}`);
+    }
+    setPlotDirectionHint(parts.join('；'));
+  };
+
+  // 处理剧情选项选择并立即续写
+  const handlePlotSelectedAndContinue = (option: { id: number; title: string; summary: string; impact?: string | null; risk?: string | null }) => {
+    // 先设置剧情走向
+    handlePlotSelected(option);
+    // 稍微延迟以确保状态更新，然后触发 AI 续写
+    setTimeout(() => {
+      if (aiWritingAssistantRef.current) {
+        aiWritingAssistantRef.current.triggerContinue();
+      }
+    }, 100);
   };
 
   // 打开新建章节对话框
@@ -299,8 +353,10 @@ function WorkspacePageContent() {
 
   // 打开删除章节对话框
   const handleDeleteChapterOpen = () => {
+    // 仅关闭菜单，不要清空selectedChapterForMenu，
+    // 后续删除对话框需要依赖该状态来确定要删除的章节
     setDeleteChapterDialogOpen(true);
-    handleChapterMenuClose();
+    setChapterMenuAnchor(null);
   };
 
   // 更新章节
@@ -824,12 +880,15 @@ function WorkspacePageContent() {
 
             {/* AI续写助手 */}
             <AiWritingAssistant
+              ref={aiWritingAssistantRef}
               novelId={novelId}
               chapterId={chapterId}
               currentContent={content}
               onContentGenerated={handleContentGenerated}
               onError={setError}
               onWorkflowTraceChange={setWorkflowTrace}
+              plotDirectionHint={plotDirectionHint}
+              onApplyToNextChapter={handleApplyGeneratedToNextChapter}
             />
 
             {/* 局部改写 */}
@@ -849,6 +908,7 @@ function WorkspacePageContent() {
               chapterId={chapterId}
               currentContent={content}
               onPlotSelected={handlePlotSelected}
+              onPlotSelectedAndContinue={handlePlotSelectedAndContinue}
               onError={setError}
             />
 

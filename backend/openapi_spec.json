@@ -1,0 +1,2874 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI小说创作系统",
+    "description": "基于多Agent协作的智能小说创作平台",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "健康检查"
+        ],
+        "summary": "Health Check",
+        "description": "健康检查接口",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ping": {
+      "get": {
+        "tags": [
+          "健康检查"
+        ],
+        "summary": "Ping",
+        "description": "简单ping接口",
+        "operationId": "ping_api_ping_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "用户认证"
+        ],
+        "summary": "Register",
+        "description": "用户注册\n\n创建新用户账号\n\nArgs:\n    user: 用户注册信息\n    db: 数据库会话\n\nReturns:\n    Token响应（包含access_token和用户信息）\n\nRaises:\n    HTTPException: 用户名或邮箱已存在",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "用户认证"
+        ],
+        "summary": "Login",
+        "description": "用户登录\n\n使用用户名和密码登录，返回JWT Token\n\nArgs:\n    credentials: 登录凭证（用户名 + 密码）\n    db: 数据库会话\n\nReturns:\n    Token响应（包含access_token和用户信息）\n\nRaises:\n    HTTPException: 用户名或密码错误，或用户已被禁用",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLogin"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "用户认证"
+        ],
+        "summary": "Get Me",
+        "description": "获取当前用户信息\n\n需要认证（提供有效的Bearer Token）\n\nArgs:\n    current_user: 当前登录用户（通过依赖注入自动获取）\n\nReturns:\n    当前用户信息",
+        "operationId": "get_me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/novels/": {
+      "post": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Create Novel",
+        "description": "创建小说\n\n需要认证",
+        "operationId": "create_novel_api_novels__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "List My Novels",
+        "description": "获取当前用户的所有小说\n\n需要认证",
+        "operationId": "list_my_novels_api_novels__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NovelResponse"
+                  },
+                  "title": "Response List My Novels Api Novels  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/novels/{novel_id}": {
+      "get": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Get Novel",
+        "description": "获取小说详情\n\n需要认证，只能查看自己的小说",
+        "operationId": "get_novel_api_novels__novel_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Update Novel",
+        "description": "更新小说信息\n\n需要认证，只能更新自己的小说",
+        "operationId": "update_novel_api_novels__novel_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovelUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NovelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Delete Novel",
+        "description": "删除小说（级联删除所有章节）\n\n需要认证，只能删除自己的小说",
+        "operationId": "delete_novel_api_novels__novel_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/novels/{novel_id}/chapters": {
+      "post": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Create Chapter",
+        "description": "创建章节\n\n需要认证，只能为自己的小说创建章节",
+        "operationId": "create_chapter_api_novels__novel_id__chapters_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChapterCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChapterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "List Chapters",
+        "description": "获取小说的所有章节\n\n需要认证，只能查看自己小说的章节",
+        "operationId": "list_chapters_api_novels__novel_id__chapters_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChapterResponse"
+                  },
+                  "title": "Response List Chapters Api Novels  Novel Id  Chapters Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/novels/{novel_id}/chapters/{chapter_id}": {
+      "get": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Get Chapter",
+        "description": "获取章节详情\n\n需要认证，只能查看自己小说的章节",
+        "operationId": "get_chapter_api_novels__novel_id__chapters__chapter_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "chapter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chapter Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChapterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Update Chapter",
+        "description": "更新章节\n\n需要认证，只能更新自己小说的章节",
+        "operationId": "update_chapter_api_novels__novel_id__chapters__chapter_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "chapter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chapter Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChapterUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChapterWithReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "小说管理"
+        ],
+        "summary": "Delete Chapter",
+        "description": "删除章节\n\n需要认证，只能删除自己小说的章节",
+        "operationId": "delete_chapter_api_novels__novel_id__chapters__chapter_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          },
+          {
+            "name": "chapter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chapter Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generation/init": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Init Novel",
+        "description": "AI 初始化小说设定\n\n根据小说的标题、类型和用户提供的主题，自动生成世界观、主要角色、大纲和剧情线索。",
+        "operationId": "init_novel_api_generation_init_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InitNovelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitNovelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/generate": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Generate Content",
+        "description": "生成小说内容\n\n使用三Agent协作工作流生成高质量小说段落：\n- Agent A：世界观描写\n- Agent B：角色对话\n- Agent C：剧情控制\n\nArgs:\n    request: 生成请求\n\nReturns:\n    生成响应（包含最终内容和各Agent输出）\n\nRaises:\n    HTTPException: 生成失败时抛出",
+        "operationId": "generate_content_api_generation_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generation/plot-options": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Generate Plot Options",
+        "description": "生成剧情走向选项\n\n用于在续写前给用户提供多个可选的剧情发展方向，由AI给出结构化描述。",
+        "operationId": "generate_plot_options_api_generation_plot_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlotOptionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlotOptionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/auto-chapter": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Auto Create Chapter",
+        "description": "AI自动生成并创建新章节\n\n根据小说设定和参考章节，自动生成下一章的章节号、标题和正文，并写入数据库。",
+        "operationId": "auto_create_chapter_api_generation_auto_chapter_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChapterResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/rewrite": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Rewrite Text",
+        "description": "局部文本改写\n\n根据用户选择的改写类型，对一小段文本进行润色/重写/压缩/扩写。",
+        "operationId": "rewrite_text_api_generation_rewrite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RewriteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/continue": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Continue Chapter",
+        "description": "章节续写：根据已有内容继续创作\n\nArgs:\n    request: 续写请求（包含当前内容和目标长度）\n    current_user: 当前用户\n    db: 数据库会话\n\nReturns:\n    续写的内容",
+        "operationId": "continue_chapter_api_generation_continue_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/continue-stream": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Continue Chapter Stream",
+        "description": "章节续写流式接口\n\n使用与 `/generation/continue` 相同的多Agent工作流，但通过SSE将结果按块推送给前端，\n以便工作台实现真正的流式展示效果。",
+        "operationId": "continue_chapter_stream_api_generation_continue_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/outline": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Generate Outline",
+        "description": "生成小说大纲\n\nArgs:\n    request: 大纲生成请求（包含主题和章节数）\n    current_user: 当前用户\n    db: 数据库会话\n\nReturns:\n    生成的大纲（章节列表）",
+        "operationId": "generate_outline_api_generation_outline_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutlineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/character": {
+      "post": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Generate Character",
+        "description": "生成角色设定\n\nArgs:\n    request: 角色生成请求\n    current_user: 当前用户\n    db: 数据库会话\n\nReturns:\n    生成的角色设定",
+        "operationId": "generate_character_api_generation_character_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/generation/test": {
+      "get": {
+        "tags": [
+          "内容生成"
+        ],
+        "summary": "Test Generation",
+        "description": "测试接口：生成示例内容\n\n用于快速测试系统是否正常工作",
+        "operationId": "test_generation_api_generation_test_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/style/samples": {
+      "post": {
+        "tags": [
+          "文风样本"
+        ],
+        "summary": "Create Style Sample",
+        "description": "创建文风样本",
+        "operationId": "create_style_sample_api_style_samples_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleSampleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleSampleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "文风样本"
+        ],
+        "summary": "List Style Samples",
+        "description": "获取小说下的所有文风样本",
+        "operationId": "list_style_samples_api_style_samples_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "novel_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Novel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StyleSampleResponse"
+                  },
+                  "title": "Response List Style Samples Api Style Samples Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/research/search": {
+      "post": {
+        "tags": [
+          "资料检索"
+        ],
+        "summary": "Research Search",
+        "description": "资料检索\n\n目前使用中文维基百科作为公共资料来源，用于历史/地理/现实背景等信息检索。\n后续可以在不改动前端的前提下，将内部实现替换为 MCP 搜索。",
+        "operationId": "research_search_api_research_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/rag/debug": {
+      "post": {
+        "tags": [
+          "RAG调试"
+        ],
+        "summary": "Rag Debug",
+        "description": "RAG 调试接口\n\n根据给定的 novel_id 和 query 执行一次混合检索，返回原始 content、score 和 metadata，\n便于前端可视化当前模型实际检索到的上下文。",
+        "operationId": "rag_debug_api_rag_debug_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RAGQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RAGResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentOutput": {
+        "properties": {
+          "agent_type": {
+            "$ref": "#/components/schemas/AgentType"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_type",
+          "content"
+        ],
+        "title": "AgentOutput",
+        "description": "单个Agent的输出"
+      },
+      "AgentType": {
+        "type": "string",
+        "enum": [
+          "worldview",
+          "character",
+          "plot"
+        ],
+        "title": "AgentType",
+        "description": "Agent类型枚举"
+      },
+      "AutoChapterRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "base_chapter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Chapter Id",
+            "description": "作为生成参考的基础章节ID，不传则使用最后一章"
+          },
+          "target_length": {
+            "type": "integer",
+            "maximum": 3000.0,
+            "minimum": 100.0,
+            "title": "Target Length",
+            "description": "AI生成章节的目标字数",
+            "default": 500
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme",
+            "description": "本章剧情重点或风格提示，如'推进主线冲突'、'日常轻松番外'等"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id"
+        ],
+        "title": "AutoChapterRequest",
+        "description": "AI自动生成章节请求"
+      },
+      "ChapterCreate": {
+        "properties": {
+          "chapter_number": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Chapter Number",
+            "description": "章节号"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "description": "章节标题"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "章节内容"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapter_number",
+          "title",
+          "content"
+        ],
+        "title": "ChapterCreate",
+        "description": "创建章节请求"
+      },
+      "ChapterResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "chapter_number": {
+            "type": "integer",
+            "title": "Chapter Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "word_count": {
+            "type": "integer",
+            "title": "Word Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "novel_id",
+          "chapter_number",
+          "title",
+          "content",
+          "word_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChapterResponse",
+        "description": "章节响应"
+      },
+      "ChapterUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "章节标题"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "章节内容"
+          }
+        },
+        "type": "object",
+        "title": "ChapterUpdate",
+        "description": "更新章节请求"
+      },
+      "ChapterWithReviewResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "chapter_number": {
+            "type": "integer",
+            "title": "Chapter Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "word_count": {
+            "type": "integer",
+            "title": "Word Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "editor_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditorReview"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "网文编辑Agent的轻量审核结果，为空表示本次未生成或解析失败"
+          },
+          "consistency_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConsistencySummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "章节内容一致性检查摘要（规则引擎、知识图谱、时间线等）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "novel_id",
+          "chapter_number",
+          "title",
+          "content",
+          "word_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChapterWithReviewResponse",
+        "description": "带有编辑审核结果的章节响应，用于手动保存后返回"
+      },
+      "CharacterRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "character_type": {
+            "type": "string",
+            "title": "Character Type"
+          },
+          "character_description": {
+            "type": "string",
+            "title": "Character Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "character_type",
+          "character_description"
+        ],
+        "title": "CharacterRequest",
+        "description": "角色生成请求"
+      },
+      "ConsistencyCheckResult": {
+        "properties": {
+          "check_type": {
+            "$ref": "#/components/schemas/ConsistencyCheckType"
+          },
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid"
+          },
+          "violations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Violations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_type",
+          "is_valid"
+        ],
+        "title": "ConsistencyCheckResult",
+        "description": "一致性检查结果"
+      },
+      "ConsistencyCheckType": {
+        "type": "string",
+        "enum": [
+          "rule_engine",
+          "knowledge_graph",
+          "timeline",
+          "emotion"
+        ],
+        "title": "ConsistencyCheckType",
+        "description": "一致性检查类型枚举"
+      },
+      "ConsistencySummary": {
+        "properties": {
+          "has_conflict": {
+            "type": "boolean",
+            "title": "Has Conflict",
+            "description": "是否存在一致性冲突"
+          },
+          "violations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Violations",
+            "description": "违规说明列表"
+          },
+          "checks_performed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Checks Performed",
+            "description": "执行过的检查类型"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_conflict"
+        ],
+        "title": "ConsistencySummary",
+        "description": "一致性检查摘要"
+      },
+      "ContinueRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "chapter_id": {
+            "type": "integer",
+            "title": "Chapter Id"
+          },
+          "current_content": {
+            "type": "string",
+            "title": "Current Content"
+          },
+          "target_length": {
+            "type": "integer",
+            "title": "Target Length",
+            "default": 500
+          },
+          "style_strength": {
+            "type": "number",
+            "title": "Style Strength",
+            "default": 0.7
+          },
+          "pace": {
+            "type": "string",
+            "title": "Pace",
+            "default": "medium"
+          },
+          "tone": {
+            "type": "string",
+            "title": "Tone",
+            "default": "neutral"
+          },
+          "use_rag_style": {
+            "type": "boolean",
+            "title": "Use Rag Style",
+            "default": true
+          },
+          "style_sample_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Sample Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "chapter_id",
+          "current_content"
+        ],
+        "title": "ContinueRequest",
+        "description": "章节续写请求"
+      },
+      "EditorIssue": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "问题类型，如节奏/爽点/信息量/重复度/人物等"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level",
+            "description": "严重程度：info/warn",
+            "default": "info"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "问题描述"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion",
+            "description": "一句话修改建议"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "message"
+        ],
+        "title": "EditorIssue",
+        "description": "网文编辑问题项（轻量审核用）"
+      },
+      "EditorReview": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "整体评分（0-100，仅作参考）",
+            "default": 0
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "编辑总体评价"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/EditorIssue"
+            },
+            "type": "array",
+            "title": "Issues",
+            "description": "问题列表"
+          },
+          "suggested_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suggested Tags",
+            "description": "建议标签，如爽文/慢热等"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "created_at"
+        ],
+        "title": "EditorReview",
+        "description": "网文编辑Agent整体审核结果"
+      },
+      "GenerationRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "剧情提示词"
+          },
+          "chapter": {
+            "type": "integer",
+            "title": "Chapter",
+            "description": "当前章节号"
+          },
+          "current_day": {
+            "type": "integer",
+            "title": "Current Day",
+            "description": "故事当前天数",
+            "default": 1
+          },
+          "target_length": {
+            "type": "integer",
+            "title": "Target Length",
+            "description": "目标字数",
+            "default": 500
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "prompt",
+          "chapter"
+        ],
+        "title": "GenerationRequest",
+        "description": "内容生成请求"
+      },
+      "GenerationResponse": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "chapter": {
+            "type": "integer",
+            "title": "Chapter"
+          },
+          "final_content": {
+            "type": "string",
+            "title": "Final Content"
+          },
+          "agent_outputs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutput"
+            },
+            "type": "array",
+            "title": "Agent Outputs"
+          },
+          "consistency_checks": {
+            "items": {
+              "$ref": "#/components/schemas/ConsistencyCheckResult"
+            },
+            "type": "array",
+            "title": "Consistency Checks"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "default": 0
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "worldview_context": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Worldview Context"
+          },
+          "character_context": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Character Context"
+          },
+          "rag_results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rag Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "chapter",
+          "final_content",
+          "agent_outputs",
+          "consistency_checks",
+          "generated_at"
+        ],
+        "title": "GenerationResponse",
+        "description": "内容生成响应"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InitNovelRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "target_chapters": {
+            "type": "integer",
+            "title": "Target Chapters",
+            "description": "规划的章节数量",
+            "default": 10
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme",
+            "description": "故事主题或补充设定提示"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id"
+        ],
+        "title": "InitNovelRequest",
+        "description": "AI初始化小说设定请求"
+      },
+      "InitNovelResponse": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "worldview": {
+            "type": "string",
+            "title": "Worldview"
+          },
+          "main_characters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Main Characters"
+          },
+          "outline": {
+            "type": "string",
+            "title": "Outline"
+          },
+          "plot_hooks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plot Hooks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "worldview",
+          "main_characters",
+          "outline",
+          "plot_hooks"
+        ],
+        "title": "InitNovelResponse",
+        "description": "AI初始化小说设定响应"
+      },
+      "NovelCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "description": "小说标题"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre",
+            "description": "小说类型（如玄幻、科幻等）"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "小说简介"
+          },
+          "worldview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worldview",
+            "description": "世界观设定"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "NovelCreate",
+        "description": "创建小说请求"
+      },
+      "NovelResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "worldview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worldview"
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "genre",
+          "description",
+          "worldview",
+          "user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "NovelResponse",
+        "description": "小说响应"
+      },
+      "NovelUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "小说标题"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre",
+            "description": "小说类型"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "小说简介"
+          },
+          "worldview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worldview",
+            "description": "世界观设定"
+          }
+        },
+        "type": "object",
+        "title": "NovelUpdate",
+        "description": "更新小说请求"
+      },
+      "OutlineRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "theme": {
+            "type": "string",
+            "title": "Theme"
+          },
+          "target_chapters": {
+            "type": "integer",
+            "title": "Target Chapters",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "theme"
+        ],
+        "title": "OutlineRequest",
+        "description": "大纲生成请求"
+      },
+      "PlotOption": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "summary"
+        ],
+        "title": "PlotOption",
+        "description": "剧情走向选项"
+      },
+      "PlotOptionsRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "chapter_id": {
+            "type": "integer",
+            "title": "Chapter Id",
+            "description": "当前章节ID"
+          },
+          "current_content": {
+            "type": "string",
+            "title": "Current Content",
+            "description": "用于判断下一步剧情走向的文本（通常是当前章节或上一章节的结尾"
+          },
+          "num_options": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Num Options",
+            "description": "需要返回的剧情走向数量",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "chapter_id",
+          "current_content"
+        ],
+        "title": "PlotOptionsRequest",
+        "description": "剧情走向选项请求"
+      },
+      "PlotOptionsResponse": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "chapter_id": {
+            "type": "integer",
+            "title": "Chapter Id"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/PlotOption"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "chapter_id",
+          "options"
+        ],
+        "title": "PlotOptionsResponse",
+        "description": "剧情走向选项响应"
+      },
+      "RAGQuery": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "检索查询"
+          },
+          "max_chapter": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Chapter",
+            "description": "最大章节号（用于过滤）"
+          },
+          "top_k": {
+            "type": "integer",
+            "title": "Top K",
+            "description": "返回Top K结果",
+            "default": 3
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "query"
+        ],
+        "title": "RAGQuery",
+        "description": "RAG检索请求"
+      },
+      "RAGResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RAGResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "retrieval_method": {
+            "type": "string",
+            "title": "Retrieval Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "results",
+          "retrieval_method"
+        ],
+        "title": "RAGResponse",
+        "description": "RAG检索响应"
+      },
+      "RAGResult": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "metadata",
+          "score"
+        ],
+        "title": "RAGResult",
+        "description": "RAG检索结果"
+      },
+      "ResearchRequest": {
+        "properties": {
+          "novel_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Novel Id",
+            "description": "小说ID（可选，用于后续扩展上下文绑定）"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "检索问题或关键词"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "检索类别，如history/geography/technology"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "ResearchRequest",
+        "description": "资料检索请求"
+      },
+      "ResearchResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchResult"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "results"
+        ],
+        "title": "ResearchResponse",
+        "description": "资料检索响应"
+      },
+      "ResearchResult": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "summary",
+          "source"
+        ],
+        "title": "ResearchResult",
+        "description": "资料检索结果"
+      },
+      "RewriteRequest": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "chapter_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chapter Id",
+            "description": "当前章节ID（可选，用于权限校验"
+          },
+          "original_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Original Text",
+            "description": "需要改写的原始文本"
+          },
+          "rewrite_type": {
+            "type": "string",
+            "title": "Rewrite Type",
+            "description": "改写类型：polish（润色）/rewrite（重写）/shorten（压缩）/extend（扩写）",
+            "default": "polish"
+          },
+          "style_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Hint",
+            "description": "额外风格提示，例如保持文风不变、偏古风、偏轻松等"
+          },
+          "target_length": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5000.0,
+                "minimum": 10.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Length",
+            "description": "目标字数（可选，不指定则由模型自动控制长度）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "original_text"
+        ],
+        "title": "RewriteRequest",
+        "description": "局部文本改写请求"
+      },
+      "RewriteResponse": {
+        "properties": {
+          "rewritten_text": {
+            "type": "string",
+            "title": "Rewritten Text",
+            "description": "改写后的文本"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rewritten_text"
+        ],
+        "title": "RewriteResponse",
+        "description": "局部文本改写响应"
+      },
+      "StyleSampleCreate": {
+        "properties": {
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id",
+            "description": "小说ID"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "description": "文风名称"
+          },
+          "sample_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Sample Text",
+            "description": "文风样本文本"
+          }
+        },
+        "type": "object",
+        "required": [
+          "novel_id",
+          "name",
+          "sample_text"
+        ],
+        "title": "StyleSampleCreate",
+        "description": "文风样本创建请求"
+      },
+      "StyleSampleResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "novel_id": {
+            "type": "integer",
+            "title": "Novel Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "sample_preview": {
+            "type": "string",
+            "title": "Sample Preview"
+          },
+          "style_features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Style Features"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "novel_id",
+          "name",
+          "sample_preview",
+          "created_at"
+        ],
+        "title": "StyleSampleResponse",
+        "description": "文风样本响应"
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "user"
+        ],
+        "title": "Token",
+        "description": "Token响应Schema"
+      },
+      "UserCreate": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 3,
+            "title": "Username",
+            "description": "用户名"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "邮箱地址"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 6,
+            "title": "Password",
+            "description": "密码"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "email",
+          "password"
+        ],
+        "title": "UserCreate",
+        "description": "用户注册Schema"
+      },
+      "UserLogin": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "用户名"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "密码"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "UserLogin",
+        "description": "用户登录Schema"
+      },
+      "UserResponse": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 3,
+            "title": "Username",
+            "description": "用户名"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "邮箱地址"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "email",
+          "id",
+          "is_active",
+          "created_at"
+        ],
+        "title": "UserResponse",
+        "description": "用户响应Schema"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

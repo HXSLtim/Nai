@@ -321,9 +321,13 @@ class AgentService:
         """
         logger.info("Agent C（剧情控制）开始工作")
 
-        # 构建提示词
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """你是一位专业的小说剧情控制专家。你的任务是整合世界观描写和角色内容，推进剧情发展，并适当埋设伏笔。
+        # 检查是否有一致性违规需要修正
+        consistency_result = state.get("consistency_result", {})
+        has_conflict = consistency_result.get("has_conflict", False)
+        retry_count = state.get("retry_count", 0)
+        
+        # 构建基础系统提示词
+        system_prompt = """你是一位专业的小说剧情控制专家。你的任务是整合世界观描写和角色内容，推进剧情发展，并适当埋设伏笔。
 
 要求：
 1. 自然融合世界观描写和角色内容
@@ -336,8 +340,28 @@ class AgentService:
 {worldview_output}
 
 角色描写：
-{character_output}
-"""),
+{character_output}"""
+
+        # 如果是重试，添加一致性违规信息
+        if has_conflict and retry_count > 0:
+            violations = consistency_result.get("violations", [])
+            if violations:
+                violation_text = "\n".join([f"- {v}" for v in violations])
+                logger.info(f"Agent C 重试第{retry_count}次，违规信息：{violations}")
+                system_prompt += f"""
+
+⚠️ 重要提醒：上一次生成的内容存在一致性问题，请在本次生成中避免以下违规：
+{violation_text}
+
+请特别注意：
+- 时间线的合理性（角色移动、事件发生的时间间隔）
+- 地理位置的逻辑性（角色移动距离与时间的匹配）
+- 角色行为的一致性（不要违反角色设定）
+- 世界观设定的一致性（不要违反已建立的规则）"""
+
+        # 构建提示词
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
             ("user", "剧情提示：{prompt}\n\n请整合以上内容，输出完整的小说段落。")
         ])
 
@@ -445,14 +469,17 @@ class AgentService:
         has_conflict = result.get("has_conflict", False)
         retry_count = state.get("retry_count", 0)
 
-        # 如果有冲突且重试次数小于3次，则重试
-        if has_conflict and retry_count < 3:
+        # 如果有冲突且重试次数小于2次，则重试
+        # 注意：最多重试2次（总共3次生成），防止无限重试
+        if has_conflict and retry_count < 2:
             logger.warning(f"检测到一致性冲突，执行第{retry_count + 1}次重试")
             state["retry_count"] = retry_count + 1
             return "retry"
 
         if has_conflict:
-            logger.error("重试次数已达上限，仍存在一致性冲突")
+            logger.warning(f"重试次数已达上限（共{retry_count + 1}次生成），仍存在一致性冲突，将返回最后生成的内容")
+            # 不再重试，返回最后生成的内容
+            logger.info(f"最后一次生成的内容长度：{len(state.get('plot_output', ''))}字")
 
         return "end"
 

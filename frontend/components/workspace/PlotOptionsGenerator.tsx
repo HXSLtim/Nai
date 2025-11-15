@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import WarningIcon from '@mui/icons-material/Warning';
 import { api } from '@/lib/api';
 
@@ -35,6 +36,8 @@ interface PlotOptionsGeneratorProps {
   currentContent: string;
   onPlotSelected: (option: PlotOption) => void;
   onError: (error: string) => void;
+  /** 选择剧情后是否自动触发续写 */
+  onPlotSelectedAndContinue?: (option: PlotOption) => void;
 }
 
 export default function PlotOptionsGenerator({
@@ -43,6 +46,7 @@ export default function PlotOptionsGenerator({
   currentContent,
   onPlotSelected,
   onError,
+  onPlotSelectedAndContinue,
 }: PlotOptionsGeneratorProps) {
   const [plotOptions, setPlotOptions] = useState<PlotOption[]>([]);
   const [plotOptionsLoading, setPlotOptionsLoading] = useState(false);
@@ -83,6 +87,15 @@ export default function PlotOptionsGenerator({
     setSelectedPlotOptionId(option.id);
     onPlotSelected(option);
   }, [onPlotSelected]);
+
+  const handleSelectAndContinue = useCallback((option: PlotOption) => {
+    setSelectedPlotOptionId(option.id);
+    if (onPlotSelectedAndContinue) {
+      onPlotSelectedAndContinue(option);
+    } else {
+      onPlotSelected(option);
+    }
+  }, [onPlotSelected, onPlotSelectedAndContinue]);
 
   const getRiskColor = (risk: string | null | undefined) => {
     if (!risk) return 'default';
@@ -135,81 +148,117 @@ export default function PlotOptionsGenerator({
 
         {plotOptions.length > 0 ? (
           <Box>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                基于当前章节内容，AI为您生成了以下剧情发展选项。选择一个方向来指导后续写作。
-              </Typography>
+            <Alert severity="info" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <LightbulbIcon fontSize="small" />
+              <Box>
+                <Typography variant="body2" fontWeight="medium">
+                  AI 已为您生成 {plotOptions.length} 个剧情方向
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  点击选项查看详情，或直接点击「选择并续写」快速开始
+                </Typography>
+              </Box>
             </Alert>
 
             <List>
               {plotOptions.map((option) => (
                 <ListItem key={option.id} disablePadding sx={{ mb: 1 }}>
-                  <ListItemButton
-                    selected={selectedPlotOptionId === option.id}
-                    onClick={() => handleSelectPlotOption(option)}
+                  <Box
                     sx={{
                       border: '1px solid',
                       borderColor: selectedPlotOptionId === option.id ? 'primary.main' : 'divider',
                       borderRadius: 1,
+                      overflow: 'hidden',
+                      transition: 'all 0.2s',
                       '&:hover': {
                         borderColor: 'primary.main',
+                        boxShadow: 1,
                       },
                     }}
                   >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <LightbulbIcon color="primary" fontSize="small" />
-                          <Typography variant="subtitle2" fontWeight="medium">
-                            {option.title}
-                          </Typography>
-                        </Box>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {option.summary}
-                          </Typography>
-                          
-                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                            {option.impact && (
-                              <Chip
-                                label={`影响: ${option.impact}`}
-                                size="small"
-                                color={getImpactColor(option.impact) as any}
-                                variant="outlined"
-                              />
-                            )}
-                            {option.risk && (
-                              <Chip
-                                label={`风险: ${option.risk}`}
-                                size="small"
-                                color={getRiskColor(option.risk) as any}
-                                variant="outlined"
-                                icon={<WarningIcon fontSize="small" />}
-                              />
-                            )}
+                    <ListItemButton
+                      selected={selectedPlotOptionId === option.id}
+                      onClick={() => handleSelectPlotOption(option)}
+                      sx={{ pb: 1 }}
+                    >
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <LightbulbIcon color="primary" fontSize="small" />
+                            <Typography variant="subtitle2" fontWeight="medium">
+                              {option.title}
+                            </Typography>
                           </Box>
-                        </Box>
-                      }
-                    />
-                  </ListItemButton>
+                        }
+                        secondary={
+                          <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              {option.summary}
+                            </Typography>
+                            
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              {option.impact && (
+                                <Chip
+                                  label={`影响: ${option.impact}`}
+                                  size="small"
+                                  color={getImpactColor(option.impact) as any}
+                                  variant="outlined"
+                                />
+                              )}
+                              {option.risk && (
+                                <Chip
+                                  label={`风险: ${option.risk}`}
+                                  size="small"
+                                  color={getRiskColor(option.risk) as any}
+                                  variant="outlined"
+                                  icon={<WarningIcon fontSize="small" />}
+                                />
+                              )}
+                            </Box>
+                          </Box>
+                        }
+                      />
+                    </ListItemButton>
+                    {onPlotSelectedAndContinue && (
+                      <Box sx={{ px: 2, pb: 1.5, pt: 0, bgcolor: 'action.hover' }}>
+                        <Button
+                          fullWidth
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          startIcon={<AutoFixHighIcon />}
+                          onClick={() => handleSelectAndContinue(option)}
+                        >
+                          选择并续写
+                        </Button>
+                      </Box>
+                    )}
+                  </Box>
                 </ListItem>
               ))}
             </List>
 
-            {selectedPlotOptionId && (
+            {selectedPlotOptionId && !onPlotSelectedAndContinue && (
               <Alert severity="success" sx={{ mt: 2 }}>
-                <Typography variant="body2">
-                  已选择剧情方向。AI续写时将参考此选项来发展故事情节。
+                <Typography variant="body2" fontWeight="medium">
+                  ✓ 已选择剧情方向
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  现在可以在下方「AI续写助手」中点击「AI续写」按钮，AI 将参考此方向发展故事
                 </Typography>
               </Alert>
             )}
           </Box>
         ) : !plotOptionsLoading ? (
-          <Typography variant="body2" color="text.secondary">
-            基于当前章节内容，AI将为您生成多个可能的剧情发展方向，帮助您选择最合适的故事走向。
-          </Typography>
+          <Box sx={{ textAlign: 'center', py: 3 }}>
+            <TrendingUpIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              基于当前章节内容，AI 将为您生成多个可能的剧情发展方向
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              点击上方「生成选项」按钮开始
+            </Typography>
+          </Box>
         ) : null}
       </CardContent>
     </Card>

@@ -322,15 +322,19 @@ class TimelineManager:
             }
 
         # 检查2：地理位置移动是否合理（简化检查）
+        # 注意：同一天内可以在不同地点发生事件（如从城市出发到郊外），只要时间间隔足够即可
         cities = re.findall(r"([A-Za-z\u4e00-\u9fa5]{2,}(?:城|镇|村|国))", event)
         last_cities = re.findall(r"([A-Za-z\u4e00-\u9fa5]{2,}(?:城|镇|村|国))", last_event)
 
         if cities and last_cities:
-            if cities[0] != last_cities[0] and (day - last_day) < 1:
-                return {
-                    "is_valid": False,
-                    "reason": f"地理移动不合理：从{last_cities[0]}到{cities[0]}需要至少1天"
-                }
+            # 如果位置改变，检查时间间隔是否足够
+            # 一般来说，同一天内的位置改变是合理的（如从城市到郊外）
+            # 只有当位置改变且时间间隔为0时才需要检查是否合理
+            if cities[0] != last_cities[0] and day == last_day:
+                # 同一天内位置改变，需要检查是否在同一个事件中描述
+                # 这种情况下，应该允许（因为可能是同一个事件中的多个地点）
+                # 所以这里不做限制
+                pass
 
         return {"is_valid": True}
 

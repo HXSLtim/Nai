@@ -70,7 +70,7 @@ export default function LoginPage() {
       const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://192.168.31.101:8000/api';
       const healthUrl = apiBase.replace('/api', '') + '/api/health';
       
-      console.log('🔍 测试连接:', healthUrl);
+      console.log('[DEBUG] 测试API连接:', healthUrl);
       
       const response = await fetch(healthUrl, {
         method: 'GET',
@@ -81,10 +81,10 @@ export default function LoginPage() {
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ 连接成功:', data);
+        console.log('[DEBUG] 连接成功:', data);
         setConnectionStatus('success');
       } else {
-        console.error('❌ 连接失败:', response.status, response.statusText);
+        console.error('[DEBUG] 连接失败:', response.status, response.statusText);
         setConnectionStatus('failed');
         setError(`连接测试失败: ${response.status} ${response.statusText}`);
       }
@@ -174,8 +174,8 @@ export default function LoginPage() {
                 }}
               >
                 {connectionStatus === 'testing' ? '测试连接中...' : 
-                 connectionStatus === 'success' ? '✅ 连接正常' :
-                 connectionStatus === 'failed' ? '❌ 连接失败' : '🔍 测试API连接'}
+                 connectionStatus === 'success' ? '连接正常' :
+                 connectionStatus === 'failed' ? '连接失败' : '测试API连接'}
               </Button>
               
               <Button
@@ -234,7 +234,7 @@ export default function LoginPage() {
                     连接问题排查步骤：
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    1. 点击"🔍 测试API连接"按钮检查后端连接
+                    1. 点击“测试API连接”按钮检查后端连接
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     2. 确保手机和电脑在同一WiFi网络

@@ -20,6 +20,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SearchIcon from '@mui/icons-material/Search';
 import { api } from '@/lib/api';
 import type { SSEEvent } from '@/lib/sse';
 import type { Novel, Chapter } from '@/types';
@@ -52,6 +53,7 @@ export default function ConsistencyChecker({
   const [consistencyChecking, setConsistencyChecking] = useState(false);
   const [consistencySummary, setConsistencySummary] = useState<ConsistencySummary | null>(null);
   const [checkingStep, setCheckingStep] = useState('');
+  const [localError, setLocalError] = useState('');
   
   // SSE事件日志
   const [sseEvents, setSseEvents] = useState<{ id: number; type: string; label: string }[]>([]);
@@ -73,6 +75,7 @@ export default function ConsistencyChecker({
     setConsistencySummary(null);
     setSseEvents([]);
     setCheckingStep('正在初始化检查...');
+    setLocalError('');
 
     try {
       await api.checkConsistencyStream(
@@ -114,13 +117,13 @@ export default function ConsistencyChecker({
             setCheckingStep('检查完成');
           },
           onError: (error: Error) => {
-            onError(error.message);
+            setLocalError(error.message);
             setCheckingStep('检查失败');
           },
         },
       );
     } catch (err) {
-      onError(err instanceof Error ? err.message : '一致性检查失败');
+      setLocalError(err instanceof Error ? err.message : '一致性检查失败');
       setCheckingStep('检查失败');
     } finally {
       setConsistencyChecking(false);
@@ -171,6 +174,13 @@ export default function ConsistencyChecker({
               {checkingStep}
             </Typography>
           </Box>
+        )}
+
+        {/* 检查相关错误（仅在本组件内展示，不覆盖正文） */}
+        {localError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {localError}
+          </Alert>
         )}
 
         {/* 检查结果 */}
@@ -299,7 +309,8 @@ export default function ConsistencyChecker({
         {(consistencyChecking || sseEvents.length > 0) && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              🔍 一致性检查流程
+              <SearchIcon fontSize="small" color="info" />
+              一致性检查流程
               {consistencyChecking && (
                 <Chip 
                   label="检查中" 

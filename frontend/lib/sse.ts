@@ -35,43 +35,65 @@ export async function readSSEFromResponse(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let receivedDone = false;
 
-  while (true) {
-    const { done, value } = await reader.read();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
 
-    if (done) {
-      callbacks.onDone?.();
-      break;
-    }
-
-    // 累积当前 chunk
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-
-    // 保留最后一行（可能是不完整的 JSON）
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const payload = line.slice(6);
-
-      try {
-        const json = JSON.parse(payload) as SSEEvent;
-        callbacks.onEvent?.(json);
-
-        if (json.type === 'chunk' && typeof (json as any).content === 'string') {
-          callbacks.onChunk?.((json as any).content);
-        } else if (json.type === 'metadata') {
-          callbacks.onMetadata?.((json as any).data);
-        } else if (json.type === 'done') {
-          callbacks.onDone?.();
-          return;
+      if (done) {
+        // 如果流正常结束但没有收到 done 事件，说明连接异常中断
+        if (!receivedDone) {
+          console.warn('SSE 流异常中断：未收到完成事件');
         }
-      } catch (e) {
-        // 解析失败时仅在控制台打印，不打断整个流
-        // eslint-disable-next-line no-console
-        console.error('解析 SSE 数据失败:', e, line);
+        callbacks.onDone?.();
+        break;
+      }
+
+      // 累积当前 chunk
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+
+      // 保留最后一行（可能是不完整的 JSON）
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+
+        try {
+          const json = JSON.parse(payload) as SSEEvent;
+          callbacks.onEvent?.(json);
+
+          if (json.type === 'chunk' && typeof (json as any).content === 'string') {
+            callbacks.onChunk?.((json as any).content);
+          } else if (json.type === 'metadata') {
+            callbacks.onMetadata?.((json as any).data);
+          } else if (json.type === 'done') {
+            receivedDone = true;
+            callbacks.onDone?.();
+            return;
+          } else if (json.type === 'error') {
+            // 处理后端发送的错误事件
+            const errorMsg = (json as any).message || '未知错误';
+            console.error('SSE 后端错误:', errorMsg);
+            throw new Error(`SSE 后端错误: ${errorMsg}`);
+          }
+        } catch (e) {
+          // 解析失败时仅在控制台打印，不打断整个流
+          // eslint-disable-next-line no-console
+          if (e instanceof Error && e.message.startsWith('SSE 后端错误')) {
+            throw e;
+          }
+          console.error('解析 SSE 数据失败:', e, line);
+        }
       }
     }
+  } catch (e) {
+    // 确保调用 onDone，让前端知道流已结束（无论成功还是失败）
+    if (!receivedDone) {
+      callbacks.onDone?.();
+    }
+    throw e;
   }
 }

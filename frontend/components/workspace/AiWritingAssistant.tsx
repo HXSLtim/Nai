@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Card,
   CardContent,
@@ -28,12 +28,12 @@ import {
 } from '@mui/material';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import StopIcon from '@mui/icons-material/Stop';
-import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TuneIcon from '@mui/icons-material/Tune';
 import { api } from '@/lib/api';
 import type { SSEEvent } from '@/lib/sse';
 import type { AgentWorkflowTrace } from '@/types';
+import AgentWorkflowVisualization from './AgentWorkflowVisualization';
 
 interface AiWritingAssistantProps {
   novelId: number;
@@ -43,16 +43,26 @@ interface AiWritingAssistantProps {
   onError: (error: string) => void;
   /** 工作流追踪变更回调，用于外部工作流可视化侧栏 */
   onWorkflowTraceChange?: (trace: AgentWorkflowTrace | null) => void;
+  /** 用户选择的剧情走向提示，用于影响续写方向 */
+  plotDirectionHint?: string | null;
+  /** 将生成内容应用到下一章节的回调（可选） */
+  onApplyToNextChapter?: (generatedText: string) => void;
 }
 
-export default function AiWritingAssistant({
+export interface AiWritingAssistantRef {
+  triggerContinue: () => void;
+}
+
+const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantProps>(function AiWritingAssistant({
   novelId,
   chapterId,
   currentContent,
   onContentGenerated,
   onError,
   onWorkflowTraceChange,
-}: AiWritingAssistantProps) {
+  plotDirectionHint,
+  onApplyToNextChapter,
+}, ref) {
   // AI生成状态
   const [aiGenerating, setAiGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState('');
@@ -73,6 +83,9 @@ export default function AiWritingAssistant({
   const [sseEvents, setSseEvents] = useState<{ id: number; type: string; label: string }[]>([]);
   const sseEventIdRef = useState(0);
 
+  // Agent 工作流追踪
+  const [workflowTrace, setWorkflowTrace] = useState<AgentWorkflowTrace | null>(null);
+
   // 获取事件类型对应的颜色
   const getEventColor = (eventType: string) => {
     switch (eventType) {
@@ -87,7 +100,7 @@ export default function AiWritingAssistant({
       case 'plot':
         return 'secondary.main';
       case 'style':
-        return 'purple';
+        return 'secondary.main';
       default:
         return 'grey.400';
     }
@@ -119,6 +132,7 @@ export default function AiWritingAssistant({
           pace,
           tone,
           use_rag_style: useRagStyle,
+          plot_direction_hint: plotDirectionHint || undefined,
         },
         {
           onChunk: (chunk: string) => {
@@ -129,16 +143,23 @@ export default function AiWritingAssistant({
             setSseEvents(prev => {
               const id = sseEventIdRef[0]++;
               let label = '';
+
               if (event.type === 'agent') {
                 const agent = (event as any).agent ?? '';
                 const status = (event as any).status ?? '';
                 label = `${agent}:${status}`;
               } else if (event.type === 'generation') {
-                label = 'generation';
+                label = '生成阶段';
+              } else if (event.type === 'chunk') {
+                label = '输出正文片段';
+              } else if (event.type === 'metadata') {
+                label = '同步元数据（文风与工作流）';
+              } else if (event.type === 'done') {
+                label = '生成流程完成';
               } else {
                 label = event.type || 'unknown';
               }
-              
+
               const next = [{ id, type: event.type ?? 'unknown', label }, ...prev];
               return next.slice(0, 20);
             });
@@ -149,9 +170,12 @@ export default function AiWritingAssistant({
               setGenerationStep(`应用文风特征: ${metadata.style_features.slice(0, 2).join(', ')}`);
             }
 
-            // 透出工作流追踪数据，供右侧工作流面板使用
+            // 更新工作流追踪数据
             if (metadata.workflow_trace) {
-              onWorkflowTraceChange?.(metadata.workflow_trace as AgentWorkflowTrace);
+              const trace = metadata.workflow_trace as AgentWorkflowTrace;
+              setWorkflowTrace(trace);
+              // 透出工作流追踪数据，供外部使用
+              onWorkflowTraceChange?.(trace);
             }
           },
           onDone: () => {
@@ -175,7 +199,7 @@ export default function AiWritingAssistant({
       setAiGenerating(false);
       setAbortController(null);
     }
-  }, [novelId, chapterId, currentContent, targetLength, styleStrength, pace, tone, useRagStyle, onError]);
+  }, [novelId, chapterId, currentContent, targetLength, styleStrength, pace, tone, useRagStyle, plotDirectionHint, onError]);
 
   const handleStopGeneration = useCallback(() => {
     if (abortController) {
@@ -188,16 +212,46 @@ export default function AiWritingAssistant({
 
   const handleApplyGenerated = useCallback(() => {
     if (generatedText) {
-      onContentGenerated(currentContent + generatedText);
+      console.log('[DEBUG] handleApplyGenerated 被调用');
+      console.log('[DEBUG] currentContent 长度:', currentContent.length);
+      console.log('[DEBUG] generatedText 长度:', generatedText.length);
+      const newContent = currentContent + generatedText;
+      console.log('[DEBUG] 合并后内容长度:', newContent.length);
+      // 使用最新的 currentContent，避免闭包问题
+      onContentGenerated(newContent);
       setGeneratedText('');
       setGenerationStep('');
+      setWorkflowTrace(null); // 清空工作流追踪
     }
   }, [generatedText, currentContent, onContentGenerated]);
+
+  const handleApplyToNextChapter = useCallback(() => {
+    if (!generatedText) {
+      return;
+    }
+
+    if (!onApplyToNextChapter) {
+      onError('当前不支持将内容应用到下一章节');
+      return;
+    }
+
+    console.log('[DEBUG] handleApplyToNextChapter 被调用');
+    console.log('[DEBUG] generatedText 长度:', generatedText.length);
+    onApplyToNextChapter(generatedText);
+    setGeneratedText('');
+    setGenerationStep('');
+    setWorkflowTrace(null);
+  }, [generatedText, onApplyToNextChapter, onError]);
 
   const handleDiscardGenerated = useCallback(() => {
     setGeneratedText('');
     setGenerationStep('');
   }, []);
+
+  // 暴露给父组件的方法
+  useImperativeHandle(ref, () => ({
+    triggerContinue: handleAiContinue,
+  }), [handleAiContinue]);
 
   return (
     <Card sx={{ mb: 2, overflow: 'visible' }}>
@@ -231,35 +285,30 @@ export default function AiWritingAssistant({
           </Tooltip>
         </Box>
         
-        {/* AI指令输入 */}
+        {/* AI指令输入（可留空，仅用于精细控制） */}
         <TextField
           fullWidth
           multiline
           rows={3}
-          label="写作指令（可选）"
+          label="补充写作指令（可留空）"
           value={aiInstruction}
           onChange={(e) => setAiInstruction(e.target.value)}
-          placeholder="例如：增加一个转折情节，让主角遇到意外..."
+          placeholder="可选：补充你对语气、细节或额外事件的要求。不填时仅按当前内容和剧情走向续写。"
+          helperText="如果已经在上方选择了剧情走向，这里可以留空。只有在你想进一步精细指定写法时再填写。"
           sx={{ mb: 2 }}
           disabled={aiGenerating}
         />
 
-        {/* 生成/停止按钮 */}
+        {/* 生成/停止按钮：遵循全局按钮设计规范 */}
         <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
           {!aiGenerating ? (
             <Button
               fullWidth
               variant="contained"
+              color="primary"
               startIcon={<AutoFixHighIcon />}
               onClick={handleAiContinue}
               disabled={!chapterId}
-              sx={{
-                background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                boxShadow: '0 3px 5px 2px rgba(33, 203, 243, .3)',
-                '&:hover': {
-                  background: 'linear-gradient(45deg, #1976D2 30%, #1CB5E0 90%)',
-                },
-              }}
             >
               AI续写
             </Button>
@@ -270,13 +319,6 @@ export default function AiWritingAssistant({
               color="error"
               startIcon={<StopIcon />}
               onClick={handleStopGeneration}
-              sx={{
-                borderWidth: 2,
-                '&:hover': {
-                  borderWidth: 2,
-                  backgroundColor: 'error.50',
-                },
-              }}
             >
               停止生成
             </Button>
@@ -321,6 +363,12 @@ export default function AiWritingAssistant({
           </Fade>
         )}
 
+        {/* Agent 工作流可视化 */}
+        <AgentWorkflowVisualization 
+          workflowTrace={workflowTrace} 
+          isGenerating={aiGenerating}
+        />
+
         {/* 生成的文本预览 */}
         {generatedText && (
           <Fade in={Boolean(generatedText)}>
@@ -334,9 +382,12 @@ export default function AiWritingAssistant({
               }}
             >
               <Box sx={{ p: 2, bgcolor: 'success.50', borderBottom: '1px solid', borderColor: 'success.200' }}>
-                <Typography variant="subtitle2" fontWeight="600" color="success.dark">
-                  ✨ AI生成内容预览
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AutoFixHighIcon fontSize="small" color="success" />
+                  <Typography variant="subtitle2" fontWeight="600" color="success.dark">
+                    AI生成内容预览
+                  </Typography>
+                </Box>
               </Box>
               <Box
                 sx={{
@@ -368,14 +419,26 @@ export default function AiWritingAssistant({
                 </Button>
                 <Button
                   variant="contained"
+                  color="primary"
                   size="small"
                   onClick={handleApplyGenerated}
                   sx={{ 
                     minWidth: 100,
-                    background: 'linear-gradient(45deg, #4CAF50 30%, #8BC34A 90%)',
                   }}
                 >
-                  应用到章节
+                  应用到当前章节
+                </Button>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  size="small"
+                  onClick={handleApplyToNextChapter}
+                  sx={{ 
+                    minWidth: 120,
+                  }}
+                  disabled={!onApplyToNextChapter}
+                >
+                  应用到下一章节
                 </Button>
               </Box>
             </Paper>
@@ -472,7 +535,8 @@ export default function AiWritingAssistant({
         {(aiGenerating || sseEvents.length > 0) && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              🤖 Agent处理流程
+              <SmartToyIcon fontSize="small" color="primary" />
+              Agent处理流程
               {aiGenerating && (
                 <Chip 
                   label="进行中" 
@@ -563,4 +627,6 @@ export default function AiWritingAssistant({
       </CardContent>
     </Card>
   );
-}
+});
+
+export default AiWritingAssistant;

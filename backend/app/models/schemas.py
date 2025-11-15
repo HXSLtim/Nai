@@ -122,7 +122,8 @@ class ChapterCreate(BaseModel):
     """创建章节请求"""
     chapter_number: int = Field(..., gt=0, description="章节号")
     title: str = Field(..., min_length=1, max_length=200, description="章节标题")
-    content: str = Field(..., min_length=1, description="章节内容")
+    # 新建章节时允许正文为空，用户可以稍后再填写
+    content: str = Field("", description="章节内容")
 
 
 class ChapterUpdate(BaseModel):
