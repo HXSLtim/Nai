@@ -197,10 +197,20 @@ MIT License
 
 ## 📞 联系方式
 
-如有问题，请提交Issue或联系开发者。
+- **项目维护者**：hahage
+- **邮箱**：a2778978136@163.com
+- **GitHub**：HXSLtim
+- **技术交流**：欢迎提交Issue或Pull Request
+
+如有问题或建议，请通过以下方式联系：
+- 提交GitHub Issue（推荐）
+- 发送邮件至 a2778978136@163.com
+- GitHub: https://github.com/HXSLtim/Nai
 
 ---
 
 **开发时间**：2025-11-14
 **版本**：Alpha 0.1.0
 **状态**：开发中
+**项目维护者**：hahage
+**联系方式**：a2778978136@163.com

@@ -185,10 +185,21 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ## 技术支持
 
 如有问题，请：
-1. 查看 `README.md`
-2. 查看 `.claude/quick-reference.md`
-3. 提交Issue到GitHub仓库
+1. 查看 `README.md` 了解项目概览
+2. 查看 `.claude/quick-reference.md` 获取技术参考
+3. 提交Issue到GitHub仓库（推荐）
+4. 发送邮件至 a2778978136@163.com 获取支持
+5. 访问项目主页：https://github.com/HXSLtim/Nai
+
+## 项目信息
+
+- **项目维护者**：hahage
+- **邮箱**：a2778978136@163.com
+- **GitHub**：https://github.com/HXSLtim
+- **版本**：Alpha 0.1.0
 
 ---
 
 **祝你使用愉快！** 🎉
+
+如有问题或建议，欢迎联系项目维护者 hahage。

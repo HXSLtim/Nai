@@ -441,22 +441,35 @@ async function generateContent(
 
 ### 沟通渠道
 
-| 场景 | 渠道 | 响应时间 |
-|-----|------|---------|
-| 紧急问题（阻塞开发） | 电话/即时通讯 | 立即 |
-| 日常问题 | Slack/钉钉 | 1小时内 |
-| 需求讨论 | 会议/文档 | 1天内 |
-| Bug报告 | GitHub Issues | 1天内 |
-| 技术方案讨论 | 文档+会议 | 2天内 |
+| 场景 | 渠道 | 响应时间 | 联系方式 |
+|-----|------|---------|----------|
+| 紧急问题（阻塞开发） | 邮件/GitHub Issues | 立即 | a2778978136@163.com |
+| 日常问题 | 邮件/GitHub Issues | 1小时内 | a2778978136@163.com |
+| 需求讨论 | 会议/文档 | 1天内 | a2778978136@163.com |
+| Bug报告 | GitHub Issues | 1天内 | 提交Issue |
+| 技术方案讨论 | 文档+会议 | 2天内 | a2778978136@163.com |
 
-### Slack/钉钉频道
+### 项目联系方式
 
-- `#general` - 全体公告
-- `#backend` - 后端技术讨论
-- `#frontend` - 前端技术讨论
-- `#design` - UI/UX设计讨论
-- `#random` - 闲聊（团建、段子）
-- `#cicd` - CI/CD通知（自动消息）
+- **项目维护者**：hahage
+- **邮箱**：a2778978136@163.com
+- **GitHub**：https://github.com/HXSLtim
+- **项目主页**：https://github.com/HXSLtim/Nai
+
+### 团队沟通
+
+由于目前项目由个人维护，建议采用以下沟通方式：
+- **技术讨论**：GitHub Issues 和 Discussions
+- **需求沟通**：邮件交流
+- **紧急联系**：电话（如有提供）
+- **代码审查**：GitHub Pull Request
+
+### 协作平台
+
+- **代码托管**：GitHub
+- **问题跟踪**：GitHub Issues
+- **文档协作**：GitHub Wiki
+- **CI/CD**：GitHub Actions
 
 ### 会议规范
 
