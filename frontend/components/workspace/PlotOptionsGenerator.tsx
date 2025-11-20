@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -22,7 +22,7 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import WarningIcon from '@mui/icons-material/Warning';
 import { api } from '@/lib/api';
 
-interface PlotOption {
+export interface PlotOption {
   id: number;
   title: string;
   summary: string;
@@ -38,6 +38,8 @@ interface PlotOptionsGeneratorProps {
   onError: (error: string) => void;
   /** 选择剧情后是否自动触发续写 */
   onPlotSelectedAndContinue?: (option: PlotOption) => void;
+  /** 外部传入的初始选项 */
+  initialOptions?: Omit<PlotOption, 'id'>[] | PlotOption[];
 }
 
 export default function PlotOptionsGenerator({
@@ -47,10 +49,28 @@ export default function PlotOptionsGenerator({
   onPlotSelected,
   onError,
   onPlotSelectedAndContinue,
+  initialOptions,
 }: PlotOptionsGeneratorProps) {
-  const [plotOptions, setPlotOptions] = useState<PlotOption[]>([]);
+  const [plotOptions, setPlotOptions] = useState<PlotOption[]>(() => {
+    if (initialOptions && initialOptions.length > 0) {
+      return initialOptions.map((opt, index) => ({
+        ...opt,
+        id: (opt as any).id || Date.now() + index,
+      }));
+    }
+    return [];
+  });
   const [plotOptionsLoading, setPlotOptionsLoading] = useState(false);
   const [selectedPlotOptionId, setSelectedPlotOptionId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (initialOptions && initialOptions.length > 0) {
+      setPlotOptions(initialOptions.map((opt, index) => ({
+        ...opt,
+        id: (opt as any).id || Date.now() + index,
+      })));
+    }
+  }, [initialOptions]);
 
   const handleGeneratePlotOptions = useCallback(async () => {
     if (!chapterId) {
@@ -195,7 +215,7 @@ export default function PlotOptionsGenerator({
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                               {option.summary}
                             </Typography>
-                            
+
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                               {option.impact && (
                                 <Chip

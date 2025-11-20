@@ -191,6 +191,7 @@ class AgentService:
 2. 融入世界观设定（魔法体系、地理环境等）
 3. 控制在150-200字
 4. 不要涉及角色对话和具体剧情
+5. 直接描写环境，严禁使用"这里是..."、"场景展示了..."等说明性语言，沉浸式描写
 
 世界观上下文：
 {worldview_context}
@@ -259,6 +260,7 @@ class AgentService:
 3. 心理活动要真实细腻
 4. 控制在200-250字
 5. 基于以下世界观描写继续创作
+6. 直接描写对话和动作，严禁使用"他想表达..."、"她感到..."等概括性语言，要通过细节展示
 
 角色信息：
 {character_context}
@@ -335,6 +337,9 @@ class AgentService:
 3. 适当埋设伏笔（如果合适）
 4. 控制在总计{target_length}字左右
 5. 使用自然的段落分行，适当换行，便于阅读，不要刻意把所有内容挤在一整段里
+6. 严禁对剧情进行总结、概述或评价，必须直接描写具体的场景、动作和对话
+7. 不要出现"总而言之"、"综上所述"、"这一章讲述了"等总结性词语
+8. 结尾不要强行升华或总结，保持剧情的自然流动，留有悬念
 
 世界观描写：
 {worldview_output}
@@ -618,6 +623,168 @@ class AgentService:
 
         logger.info(f"内容生成完成，共{len(response.final_content)}字")
         return response
+
+    async def generate_content_stream(
+        self,
+        request: GenerationRequest
+    ):
+        """
+        流式生成小说内容，yield事件
+        """
+        logger.info(f"开始流式生成内容：小说{request.novel_id}，章节{request.chapter}")
+
+        # 准备初始状态
+        initial_state: NovelGenerationState = {
+            "novel_id": request.novel_id,
+            "prompt": request.prompt,
+            "chapter": request.chapter,
+            "current_day": request.current_day,
+            "target_length": request.target_length,
+            "worldview_output": "",
+            "character_output": "",
+            "plot_output": "",
+            "worldview_context": [],
+            "character_context": [],
+            "consistency_result": {},
+            "retry_count": 0,
+            "workflow_steps": [],
+        }
+
+        # 记录合并后的状态
+        final_state = initial_state.copy()
+
+        # yield initial event
+        yield {"type": "agent", "agent": "System", "status": "初始化完成", "data": None}
+
+        async for output in self.workflow.astream(initial_state):
+            for node_name, node_data in output.items():
+                # 更新最终状态
+                final_state.update(node_data)
+                
+                # 根据节点名称发送事件
+                if node_name == "retrieve_context":
+                    yield {"type": "agent", "agent": "RAG", "status": "上下文检索完成", "data": {"worldview_chunks": len(node_data.get("worldview_context", [])), "character_chunks": len(node_data.get("character_context", []))}}
+                    yield {"type": "agent", "agent": "Agent A", "status": "正在构思世界观...", "data": None}
+                
+                elif node_name == "agent_a_worldview":
+                    yield {"type": "agent", "agent": "Agent A", "status": "世界观描写完成", "data": {"preview": node_data.get("worldview_output", "")[:50]}}
+                    yield {"type": "agent", "agent": "Agent B", "status": "正在刻画角色...", "data": None}
+                
+                elif node_name == "agent_b_character":
+                    yield {"type": "agent", "agent": "Agent B", "status": "角色描写完成", "data": {"preview": node_data.get("character_output", "")[:50]}}
+                    yield {"type": "agent", "agent": "Agent C", "status": "正在生成剧情...", "data": None}
+                
+                elif node_name == "agent_c_plot":
+                    yield {"type": "agent", "agent": "Agent C", "status": "剧情生成完成", "data": {"preview": node_data.get("plot_output", "")[:50]}}
+                    yield {"type": "agent", "agent": "Consistency", "status": "正在检查一致性...", "data": None}
+                
+                elif node_name == "consistency_check":
+                    result = node_data.get("consistency_result", {})
+                    has_conflict = result.get("has_conflict", False)
+                    if has_conflict:
+                         yield {"type": "agent", "agent": "Consistency", "status": "发现冲突，准备重试", "data": {"violations": result.get("violations", [])}}
+                    else:
+                         yield {"type": "agent", "agent": "Consistency", "status": "检查通过", "data": None}
+
+        # 从一致性结果中构建结构化的一致性检查列表
+        consistency_result = final_state.get("consistency_result", {}) or {}
+        layer_results = consistency_result.get("layer_results", {}) or {}
+
+        consistency_checks: List[ConsistencyCheckResult] = []
+
+        # 规则引擎
+        rule_layer = layer_results.get("rule_engine") or {}
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.RULE_ENGINE,
+                is_valid=bool(rule_layer.get("is_valid", True)),
+                violations=list(rule_layer.get("violations", [])),
+            )
+        )
+
+        # 知识图谱
+        kg_layer = layer_results.get("knowledge_graph") or {}
+        kg_violations = list(kg_layer.get("violations", []))
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.KNOWLEDGE_GRAPH,
+                is_valid=not bool(kg_violations),
+                violations=kg_violations,
+            )
+        )
+
+        # 时间线
+        timeline_layer = layer_results.get("timeline") or {}
+        timeline_is_valid = bool(timeline_layer.get("is_valid", True))
+        timeline_violations: List[str] = []
+        if not timeline_is_valid and timeline_layer.get("reason"):
+            timeline_violations = [str(timeline_layer.get("reason"))]
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.TIMELINE,
+                is_valid=timeline_is_valid,
+                violations=timeline_violations,
+            )
+        )
+
+        # 情绪状态机（目前为占位）
+        consistency_checks.append(
+            ConsistencyCheckResult(
+                check_type=ConsistencyCheckType.EMOTION,
+                is_valid=True,
+                violations=[],
+            )
+        )
+
+        # 构建Agent工作流追踪
+        steps_data = final_state.get("workflow_steps", []) or []
+        steps: List[AgentWorkflowStep] = []
+        for item in steps_data:
+            try:
+                steps.append(AgentWorkflowStep(**item))
+            except Exception:
+                logger.warning("解析AgentWorkflowStep失败，已跳过一条步骤数据")
+                continue
+
+        workflow_trace = AgentWorkflowTrace(
+            run_id=f"agent-generate-{request.novel_id}-{request.chapter}-{int(datetime.utcnow().timestamp() * 1000)}",
+            trigger="generation.generate_content_stream",
+            novel_id=request.novel_id,
+            chapter_id=request.chapter,
+            user_id=None,
+            summary=f"小说{request.novel_id} 第{request.chapter}章的多Agent内容生成",
+            steps=steps,
+        )
+
+        # 构建响应
+        response = GenerationResponse(
+            novel_id=request.novel_id,
+            chapter=request.chapter,
+            final_content=final_state["plot_output"],
+            agent_outputs=[
+                AgentOutput(
+                    agent_type=AgentType.WORLDVIEW,
+                    content=final_state["worldview_output"],
+                ),
+                AgentOutput(
+                    agent_type=AgentType.CHARACTER,
+                    content=final_state["character_output"],
+                ),
+                AgentOutput(
+                    agent_type=AgentType.PLOT,
+                    content=final_state["plot_output"],
+                ),
+            ],
+            consistency_checks=consistency_checks,
+            retry_count=final_state["retry_count"],
+            generated_at=datetime.now(),
+            worldview_context=final_state.get("worldview_context", []),
+            character_context=final_state.get("character_context", []),
+            workflow_trace=workflow_trace,
+        )
+
+        logger.info(f"流式内容生成完成，共{len(response.final_content)}字")
+        yield {"type": "final_response", "data": response}
     
     async def generate_character(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """AI生成角色"""

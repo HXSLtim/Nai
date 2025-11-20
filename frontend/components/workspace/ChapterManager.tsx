@@ -55,6 +55,7 @@ export default function ChapterManager({
   // 对话框状态
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // 表单状态
   const [chapterTitle, setChapterTitle] = useState('');
@@ -112,6 +113,41 @@ export default function ChapterManager({
     }
   }, [novelId, chapterNumber, chapterTitle, onChaptersUpdated, onError]);
 
+  // 打开编辑对话框
+  const handleEditOpen = useCallback(() => {
+    if (selectedChapter) {
+      setChapterTitle(selectedChapter.title);
+      setChapterNumber(selectedChapter.chapter_number);
+      setEditDialogOpen(true);
+    }
+    handleMenuClose();
+  }, [selectedChapter, handleMenuClose]);
+
+  // 更新章节
+  const handleEditChapter = useCallback(async () => {
+    if (!selectedChapter || !chapterTitle.trim()) {
+      onError('章节标题不能为空');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.updateChapter(novelId, selectedChapter.id, {
+        title: chapterTitle.trim(),
+        chapter_number: chapterNumber,
+      });
+
+      setEditDialogOpen(false);
+      setChapterTitle('');
+      setSelectedChapter(null);
+      onChaptersUpdated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : '更新章节失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedChapter, novelId, chapterNumber, chapterTitle, onChaptersUpdated, onError]);
+
   // 删除章节
   const handleDeleteChapter = useCallback(async () => {
     if (!selectedChapter) return;
@@ -119,7 +155,7 @@ export default function ChapterManager({
     setLoading(true);
     try {
       await api.deleteChapter(novelId, selectedChapter.id);
-      
+
       setDeleteDialogOpen(false);
       setSelectedChapter(null);
       onChaptersUpdated();
@@ -231,6 +267,10 @@ export default function ChapterManager({
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
       >
+        <MenuItem onClick={handleEditOpen}>
+          <EditIcon sx={{ mr: 1 }} fontSize="small" />
+          编辑章节
+        </MenuItem>
         <MenuItem onClick={handleDeleteOpen} sx={{ color: 'error.main' }}>
           <DeleteIcon sx={{ mr: 1 }} fontSize="small" />
           删除章节

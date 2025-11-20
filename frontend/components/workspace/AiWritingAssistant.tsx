@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -34,6 +34,8 @@ import { api } from '@/lib/api';
 import type { SSEEvent } from '@/lib/sse';
 import type { AgentWorkflowTrace } from '@/types';
 import AgentWorkflowVisualization from './AgentWorkflowVisualization';
+import MultiAiStreamDisplay from './MultiAiStreamDisplay';
+import PlotOptionsGenerator, { PlotOption } from './PlotOptionsGenerator';
 
 interface AiWritingAssistantProps {
   novelId: number;
@@ -50,7 +52,7 @@ interface AiWritingAssistantProps {
 }
 
 export interface AiWritingAssistantRef {
-  triggerContinue: () => void;
+  triggerContinue: (overrideInstruction?: string) => void;
 }
 
 const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantProps>(function AiWritingAssistant({
@@ -67,7 +69,14 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
   const [aiGenerating, setAiGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState('');
   const [generatedText, setGeneratedText] = useState('');
+  const generatedTextRef = useRef('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+
+  // 剧情选项
+  const [detectedPlotOptions, setDetectedPlotOptions] = useState<PlotOption[]>([]);
+
+  // 流式显示增强
+  const [streamHeaderInfo, setStreamHeaderInfo] = useState('Agent实时生成状态');
 
   // 用户设置
   const [aiInstruction, setAiInstruction] = useState('');
@@ -79,8 +88,18 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
   const [tone, setTone] = useState<'neutral' | 'tense' | 'relaxed' | 'sad' | 'joyful'>('neutral');
   const [useRagStyle, setUseRagStyle] = useState(true);
 
-  // SSE事件日志
-  const [sseEvents, setSseEvents] = useState<{ id: number; type: string; label: string }[]>([]);
+  // SSE事件日志（增强版，包含时间戳和元数据）
+  const [sseEvents, setSseEvents] = useState<
+    {
+      id: number;
+      type: string;
+      label: string;
+      timestamp: Date;
+      agent?: string;
+      status?: string;
+      data?: any;
+    }[]
+  >([]);
   const sseEventIdRef = useState(0);
 
   // Agent 工作流追踪
@@ -106,7 +125,7 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
     }
   };
 
-  const handleAiContinue = useCallback(async () => {
+  const handleAiContinue = useCallback(async (overrideInstruction?: string) => {
     if (!chapterId) {
       onError('未找到当前章节');
       return;
@@ -117,7 +136,10 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
     setAiGenerating(true);
     setGenerationStep('正在连接AI...');
     setGeneratedText('');
+    generatedTextRef.current = '';
     setSseEvents([]);
+    setDetectedPlotOptions([]);
+    setStreamHeaderInfo('Agent实时生成状态');
     // 每次新一轮生成前重置工作流追踪
     onWorkflowTraceChange?.(null);
 
@@ -132,22 +154,30 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
           pace,
           tone,
           use_rag_style: useRagStyle,
-          plot_direction_hint: plotDirectionHint || undefined,
+          plot_direction_hint: [plotDirectionHint, overrideInstruction ?? aiInstruction].filter(Boolean).join('\n') || undefined,
         },
         {
           onChunk: (chunk: string) => {
             setGeneratedText(prev => prev + chunk);
+            generatedTextRef.current += chunk;
             setGenerationStep('AI正在创作...');
           },
           onEvent: (event: SSEEvent) => {
+            const timestamp = new Date();
             setSseEvents(prev => {
               const id = sseEventIdRef[0]++;
               let label = '';
+              let agent = undefined;
+              let status = undefined;
 
               if (event.type === 'agent') {
-                const agent = (event as any).agent ?? '';
-                const status = (event as any).status ?? '';
-                label = `${agent}:${status}`;
+                const eventAgent = (event as any).agent ?? '';
+                const eventStatus = (event as any).status ?? '';
+                label = `${eventAgent}:${eventStatus}`;
+                agent = eventAgent;
+                status = eventStatus;
+                // Update the progress text
+                setGenerationStep(`${eventAgent} ${eventStatus}...`);
               } else if (event.type === 'generation') {
                 label = '生成阶段';
               } else if (event.type === 'chunk') {
@@ -160,7 +190,10 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
                 label = event.type || 'unknown';
               }
 
-              const next = [{ id, type: event.type ?? 'unknown', label }, ...prev];
+              const next = [
+                { id, type: event.type ?? 'unknown', label, timestamp, agent, status, data: (event as any).data },
+                ...prev,
+              ];
               return next.slice(0, 20);
             });
           },
@@ -177,11 +210,43 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
               // 透出工作流追踪数据，供外部使用
               onWorkflowTraceChange?.(trace);
             }
+
+            // 更新Agent数量显示
+            if (metadata.agents || metadata.agent_names) {
+              const agents = metadata.agents || metadata.agent_names || [];
+              if (agents.length > 0) {
+                setStreamHeaderInfo(`Agent实时生成状态 (${agents.length}个Agent)`);
+              }
+            }
           },
           onDone: () => {
             setGenerationStep('生成完成');
             setAiGenerating(false);
             setAbortController(null);
+
+            // 尝试解析剧情选项 JSON
+            try {
+              let text = generatedTextRef.current.trim();
+              // 移除可能存在的 markdown 代码块标记
+              if (text.startsWith('```')) {
+                text = text.replace(/^```(json)?/, '').replace(/```$/, '');
+              }
+              text = text.trim();
+
+              if (text.startsWith('{') && text.includes('"options"')) {
+                const data = JSON.parse(text);
+                if (data.options && Array.isArray(data.options)) {
+                  console.log('[AiWritingAssistant] Detected plot options:', data.options);
+                  setDetectedPlotOptions(data.options);
+                  // 如果是纯选项输出，则清空生成的文本显示，避免重复
+                  setGeneratedText('');
+                  generatedTextRef.current = '';
+                }
+              }
+            } catch (e) {
+              // 解析失败则忽略，视为普通文本
+              console.log('[AiWritingAssistant] JSON parse failed, treating as text');
+            }
           },
           onError: (error: Error) => {
             onError(error.message);
@@ -199,7 +264,20 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
       setAiGenerating(false);
       setAbortController(null);
     }
-  }, [novelId, chapterId, currentContent, targetLength, styleStrength, pace, tone, useRagStyle, plotDirectionHint, onError]);
+  }, [novelId, chapterId, currentContent, targetLength, styleStrength, pace, tone, useRagStyle, plotDirectionHint, aiInstruction, onError]);
+
+  const handlePlotOptionSelected = useCallback((option: PlotOption) => {
+    setAiInstruction(`剧情走向：${option.title}\n${option.summary}`);
+    setDetectedPlotOptions([]);
+  }, []);
+
+  const handlePlotOptionSelectedAndContinue = useCallback((option: PlotOption) => {
+    const instruction = `剧情走向：${option.title}\n${option.summary}`;
+    setAiInstruction(instruction);
+    setDetectedPlotOptions([]);
+    // 立即触发续写
+    handleAiContinue(instruction);
+  }, [handleAiContinue]);
 
   const handleStopGeneration = useCallback(() => {
     if (abortController) {
@@ -263,18 +341,18 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
               AI续写助手
             </Typography>
             {aiGenerating && (
-              <Chip 
-                label="生成中" 
-                size="small" 
-                color="primary" 
-                sx={{ 
+              <Chip
+                label="生成中"
+                size="small"
+                color="primary"
+                sx={{
                   animation: 'pulse 1.5s infinite',
                   '@keyframes pulse': {
                     '0%': { opacity: 1 },
                     '50%': { opacity: 0.7 },
                     '100%': { opacity: 1 },
                   }
-                }} 
+                }}
               />
             )}
           </Box>
@@ -284,7 +362,7 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
             </IconButton>
           </Tooltip>
         </Box>
-        
+
         {/* AI指令输入（可留空，仅用于精细控制） */}
         <TextField
           fullWidth
@@ -307,7 +385,7 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
               variant="contained"
               color="primary"
               startIcon={<AutoFixHighIcon />}
-              onClick={handleAiContinue}
+              onClick={() => handleAiContinue()}
               disabled={!chapterId}
             >
               AI续写
@@ -328,15 +406,15 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
         {/* 生成进度 */}
         {aiGenerating && (
           <Fade in={aiGenerating}>
-            <Paper 
-              elevation={0} 
-              sx={{ 
-                p: 2, 
-                mb: 2, 
-                bgcolor: 'primary.50', 
-                border: '1px solid', 
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                mb: 2,
+                bgcolor: 'primary.50',
+                border: '1px solid',
                 borderColor: 'primary.200',
-                borderRadius: 2 
+                borderRadius: 2
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -345,16 +423,16 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
                   AI正在思考中...
                 </Typography>
               </Box>
-              <LinearProgress 
-                sx={{ 
-                  mb: 1, 
-                  height: 6, 
+              <LinearProgress
+                sx={{
+                  mb: 1,
+                  height: 6,
                   borderRadius: 3,
                   backgroundColor: 'primary.100',
                   '& .MuiLinearProgress-bar': {
                     borderRadius: 3,
                   }
-                }} 
+                }}
               />
               <Typography variant="caption" color="primary.dark" sx={{ fontWeight: 500 }}>
                 {generationStep || '正在分析文本结构...'}
@@ -364,18 +442,31 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
         )}
 
         {/* Agent 工作流可视化 */}
-        <AgentWorkflowVisualization 
-          workflowTrace={workflowTrace} 
+        <AgentWorkflowVisualization
+          workflowTrace={workflowTrace}
           isGenerating={aiGenerating}
         />
+
+        {/* 剧情选项生成器 (当检测到 JSON 输出时显示) */}
+        {detectedPlotOptions.length > 0 && (
+          <PlotOptionsGenerator
+            novelId={novelId}
+            chapterId={chapterId}
+            currentContent={currentContent}
+            onPlotSelected={handlePlotOptionSelected}
+            onPlotSelectedAndContinue={handlePlotOptionSelectedAndContinue}
+            onError={onError}
+            initialOptions={detectedPlotOptions}
+          />
+        )}
 
         {/* 生成的文本预览 */}
         {generatedText && (
           <Fade in={Boolean(generatedText)}>
-            <Paper 
-              elevation={2} 
-              sx={{ 
-                mb: 2, 
+            <Paper
+              elevation={2}
+              sx={{
+                mb: 2,
                 overflow: 'hidden',
                 border: '1px solid',
                 borderColor: 'success.200',
@@ -397,9 +488,9 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
                   bgcolor: 'background.paper',
                 }}
               >
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
+                <Typography
+                  variant="body2"
+                  sx={{
                     whiteSpace: 'pre-wrap',
                     lineHeight: 1.6,
                     fontFamily: '"Noto Serif SC", serif',
@@ -422,7 +513,7 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
                   color="primary"
                   size="small"
                   onClick={handleApplyGenerated}
-                  sx={{ 
+                  sx={{
                     minWidth: 100,
                   }}
                 >
@@ -433,7 +524,7 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
                   color="secondary"
                   size="small"
                   onClick={handleApplyToNextChapter}
-                  sx={{ 
+                  sx={{
                     minWidth: 120,
                   }}
                   disabled={!onApplyToNextChapter}
@@ -534,99 +625,116 @@ const AiWritingAssistant = forwardRef<AiWritingAssistantRef, AiWritingAssistantP
         {/* Agent流程显示 */}
         {(aiGenerating || sseEvents.length > 0) && (
           <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SmartToyIcon fontSize="small" color="primary" />
-              Agent处理流程
-              {aiGenerating && (
-                <Chip 
-                  label="进行中" 
-                  size="small" 
-                  color="primary" 
-                  sx={{ 
-                    animation: 'pulse 1.5s infinite',
-                    '@keyframes pulse': {
-                      '0%': { opacity: 1 },
-                      '50%': { opacity: 0.7 },
-                      '100%': { opacity: 1 },
-                    }
-                  }} 
-                />
-              )}
-            </Typography>
-            <Divider sx={{ mb: 1 }} />
-            
-            <Box 
-              sx={{ 
-                maxHeight: 200, 
-                overflow: 'auto',
-                bgcolor: 'grey.50',
-                borderRadius: 1,
-                p: 1.5,
-                border: '1px solid',
-                borderColor: 'grey.200'
-              }}
-            >
-              {sseEvents.length === 0 && aiGenerating && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <CircularProgress size={12} />
-                  <Typography variant="body2" color="text.secondary">
-                    正在初始化Agent...
-                  </Typography>
-                </Box>
-              )}
-              
-              {sseEvents.map((event, index) => (
-                <Box 
-                  key={event.id}
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 1, 
-                    mb: 0.5,
-                    opacity: aiGenerating && index === 0 ? 1 : 0.8,
-                    transition: 'opacity 0.3s ease'
-                  }}
-                >
-                  {aiGenerating && index === 0 ? (
-                    <CircularProgress size={12} color="primary" />
-                  ) : (
-                    <Box 
-                      sx={{ 
-                        width: 12, 
-                        height: 12, 
-                        borderRadius: '50%', 
-                        bgcolor: getEventColor(event.type),
-                        flexShrink: 0
-                      }} 
-                    />
-                  )}
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      fontSize: '0.8rem',
-                      fontFamily: 'monospace',
-                      color: aiGenerating && index === 0 ? 'primary.main' : 'text.secondary'
+            {/* 多AI流式显示组件（增强版） */}
+            <MultiAiStreamDisplay
+              sseEvents={sseEvents}
+              currentGeneration={generatedText}
+              isGenerating={aiGenerating}
+              headerInfo={streamHeaderInfo}
+            />
+
+            {/* 传统的事件列表（保留作为回退） - 已注释，使用 MultiAiStreamDisplay 替代
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <SmartToyIcon fontSize="small" color="primary" />
+                处理流程日志
+                {aiGenerating && (
+                  <Chip
+                    label="进行中"
+                    size="small"
+                    color="primary"
+                    sx={{
+                      animation: 'pulse 1.5s infinite',
+                      '@keyframes pulse': {
+                        '0%': { opacity: 1 },
+                        '50%': { opacity: 0.7 },
+                        '100%': { opacity: 1 },
+                      }
+                    }}
+                  />
+                )}
+              </Typography>
+              <Divider sx={{ mb: 1 }} />
+
+              <Box
+                sx={{
+                  maxHeight: 150,
+                  overflow: 'auto',
+                  bgcolor: 'grey.50',
+                  borderRadius: 1,
+                  p: 1.5,
+                  border: '1px solid',
+                  borderColor: 'grey.200'
+                }}
+              >
+                {sseEvents.length === 0 && aiGenerating && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <CircularProgress size={12} />
+                    <Typography variant="body2" color="text.secondary">
+                      正在初始化Agent...
+                    </Typography>
+                  </Box>
+                )}
+
+                {sseEvents.map((event, index) => (
+                  <Box
+                    key={event.id}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      mb: 0.5,
+                      opacity: aiGenerating && index === 0 ? 1 : 0.8,
+                      transition: 'opacity 0.3s ease'
                     }}
                   >
-                    [{new Date().toLocaleTimeString()}] {event.label}
-                  </Typography>
-                </Box>
-              ))}
-              
-              {aiGenerating && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, pt: 1, borderTop: '1px dashed', borderColor: 'grey.300' }}>
-                  <CircularProgress size={12} />
-                  <Typography variant="body2" color="primary.main" sx={{ fontWeight: 500 }}>
-                    {generationStep || 'Agent正在处理...'}
-                  </Typography>
-                </Box>
-              )}
+                    {aiGenerating && index === 0 ? (
+                      <CircularProgress size={12} color="primary" />
+                    ) : (
+                      <Box
+                        sx={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: '50%',
+                          bgcolor: getEventColor(event.type),
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '0.8rem',
+                        fontFamily: 'monospace',
+                        color: aiGenerating && index === 0 ? 'primary.main' : 'text.secondary'
+                      }}
+                    >
+                      [{event.timestamp.toLocaleTimeString()}] {event.label}
+                    </Typography>
+                  </Box>
+                ))}
+
+                {aiGenerating && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, pt: 1, borderTop: '1px dashed', borderColor: 'grey.300' }}>
+                    <CircularProgress size={12} />
+                    <Typography variant="body2" color="primary.main" sx={{ fontWeight: 500 }}>
+                      {generationStep || 'Agent正在处理...'}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
             </Box>
+            */}
           </Box>
         )}
       </CardContent>
     </Card>
   );
+
+  // 暴露给父组件的方法
+  useImperativeHandle(ref, () => ({
+    triggerContinue: handleAiContinue,
+  }), [handleAiContinue]);
 });
 
 export default AiWritingAssistant;

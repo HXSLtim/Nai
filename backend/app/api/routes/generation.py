@@ -770,89 +770,177 @@ async def continue_chapter_stream(
     db: Session = Depends(get_db),
 ):
     """章节续写流式接口
-
+    
     使用与 `/generation/continue` 相同的多Agent工作流，但通过SSE将结果按块推送给前端，
     以便工作台实现真正的流式展示效果。
     """
-
     try:
-        # 复用已有的续写逻辑，确保行为与非流式接口保持一致
-        logger.info("开始调用 continue_chapter 获取生成结果")
-        base_result = await continue_chapter(request, current_user, db)
-        logger.info(f"continue_chapter 返回成功，内容长度：{len(base_result.get('content', ''))}")
+        logger.info(
+            "章节续写流式请求：novel_id=%s, chapter_id=%s",
+            request.novel_id,
+            request.chapter_id,
+        )
 
-        # 提取主要字段
-        full_content = str(base_result.get("content") or "")
-        style_features = base_result.get("style_features") or []
-        rag_style_context = base_result.get("rag_style_context") or []
-        rag_story_context = base_result.get("rag_story_context") or []
-        agent_outputs = base_result.get("agent_outputs") or []
-        workflow_trace = base_result.get("workflow_trace")
-        settings = base_result.get("settings") or {}
-        length = int(base_result.get("length") or len(full_content))
+        # 验证小说所有权
+        novel = novel_crud.get_novel_by_id(db, request.novel_id)
+        if not novel or novel.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="小说不存在或无权访问")
+
+        # 获取当前章节信息
+        chapter = novel_crud.get_chapter_by_id(db, request.chapter_id)
+        if not chapter or chapter.novel_id != request.novel_id:
+            raise HTTPException(status_code=404, detail="章节不存在或不属于该小说")
+
+        # 文风特征与上下文
+        style_features: list[str] = []
+        style_guide = ""
+        style_sample_id = request.style_sample_id
+        rag_style_context: list[str] = []
+
+        # 优先使用用户上传的文风样本
+        if style_sample_id is not None:
+            sample = novel_crud.get_style_sample_by_id(db, style_sample_id)
+            if not sample or sample.novel_id != request.novel_id:
+                raise HTTPException(status_code=404, detail="文风样本不存在或不属于该小说")
+
+            try:
+                style_features = json.loads(sample.style_features) if sample.style_features else []
+            except Exception:
+                style_features = []
+
+            if request.style_strength > 0:
+                if style_features:
+                    style_guide = "\n\n【文风指导】请尽量参考以下文风特征进行创作：\n" + "\n".join(
+                        f"- {feat}" for feat in style_features
+                    )
+            rag_style_context.append(sample.sample_text[:300])
+
+        # 如果没有文风样本但开启了RAG文风分析
+        elif request.use_rag_style and request.current_content:
+            if len(request.current_content) > 100:
+                sample_text = (
+                    request.current_content[-500:]
+                    if len(request.current_content) > 500
+                    else request.current_content
+                )
+                # 简易文风分析
+                sentences = [s.strip() for s in sample_text.replace('。', '。\n').split('\n') if s.strip()]
+                if sentences:
+                    avg_length = sum(len(s) for s in sentences) / len(sentences)
+                    if avg_length < 15:
+                        style_features.append("使用简短有力的句式")
+                    elif avg_length > 30:
+                        style_features.append("使用细腻详尽的长句描写")
+                
+                if request.style_strength > 0.5 and style_features:
+                    style_guide = "\n\n【文风指导】请严格保持以下文风特征：\n" + "\n".join(
+                        f"- {feat}" for feat in style_features
+                    )
+
+        # 构造节奏指导
+        pace_guide = {
+            "slow": "采用舒缓的节奏，详细描写场景和心理活动，营造沉浸感。",
+            "medium": "保持适中的叙事节奏，情节推进与描写平衡。",
+            "fast": "采用快节奏叙事，简洁明快，快速推进情节。"
+        }.get(request.pace, "")
+
+        # 构造情感基调指导
+        tone_guide = {
+            "neutral": "",
+            "tense": "营造紧张氛围，增强冲突感和悬念。",
+            "relaxed": "保持轻松愉快的氛围，注重趣味性。",
+            "sad": "渲染悲伤情绪，注重情感共鸣。",
+            "joyful": "营造欢快氛围，传递积极向上的情绪。"
+        }.get(request.tone, "")
+
+        # 构造剧情走向提示
+        plot_direction_hint = (
+            request.plot_direction_hint.strip() if isinstance(request.plot_direction_hint, str) else ""
+        )
+        plot_hint_part = f"\n- 剧情走向：{plot_direction_hint}" if plot_direction_hint else ""
+
+        # 构造完整的续写提示词
+        prompt = f"""请根据以下内容继续创作约{request.target_length}字的小说段落。
+
+【小说信息】
+标题：{novel.title}
+类型：{novel.genre or '未指定'}
+世界观：{novel.worldview or '无'}
+
+【已有内容】
+{request.current_content[-1000:] if len(request.current_content) > 1000 else request.current_content}
+
+【创作要求】
+- 目标字数：约{request.target_length}字
+- 叙事节奏：{pace_guide}
+- 情感基调：{tone_guide}
+{style_guide}{plot_hint_part}
+
+请自然地续写故事，保持情节连贯性和人物一致性。
+
+续写："""
+
+        # 构造生成请求
+        gen_request = GenerationRequest(
+            novel_id=request.novel_id,
+            prompt=prompt,
+            chapter=chapter.chapter_number,
+            current_day=1,
+            target_length=request.target_length,
+        )
 
         async def event_generator():
-            """SSE事件生成器，按块输出文本和元数据。"""
+            """SSE事件生成器"""
             try:
-                # 如果没有内容，直接发送完成事件
-                if not full_content:
-                    logger.warning("生成的内容为空")
-                    done_payload = {"type": "done"}
-                    yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-                    return
-
-                # 计算块大小，控制在大约 60 个块以内
-                total_len = len(full_content)
-                chunk_count = 60
-                chunk_size = max(50, total_len // chunk_count) if total_len > 0 else 0
-                logger.info(f"开始流式发送内容：总长度={total_len}，块大小={chunk_size}，块数={(total_len + chunk_size - 1) // chunk_size}")
-
-                # 按块发送正文内容
-                chunk_sent = 0
-                for start in range(0, total_len, chunk_size):
-                    end = min(start + chunk_size, total_len)
-                    chunk = full_content[start:end]
-                    if not chunk:
-                        continue
-
-                    data = {"type": "chunk", "content": chunk}
-                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-                    chunk_sent += 1
-
-                    # 适当让出事件循环，避免阻塞
-                    await asyncio.sleep(0)
-
-                logger.info(f"已发送 {chunk_sent} 个内容块")
-
-                # 发送一次性元数据
-                metadata = {
-                    "style_features": style_features,
-                    "rag_style_context": rag_style_context,
-                    "rag_story_context": rag_story_context,
-                    "agent_outputs": agent_outputs,
-                    "workflow_trace": workflow_trace,
-                    "settings": settings,
-                    "word_count": length,
-                }
-                meta_payload = {"type": "metadata", "data": metadata}
-                # 使用 default=str 处理 datetime 等不可直接序列化的对象
-                yield f"data: {json.dumps(meta_payload, ensure_ascii=False, default=str)}\n\n"
-                logger.info("已发送元数据")
-
-                # 发送完成事件
-                done_payload = {"type": "done"}
-                yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-                logger.info("已发送完成事件")
+                async for event in agent_service.generate_content_stream(gen_request):
+                    if event["type"] == "final_response":
+                        response = event["data"]
+                        
+                        # 发送元数据
+                        workflow_trace = (
+                            response.workflow_trace.model_dump()
+                            if getattr(response, "workflow_trace", None) is not None
+                            else None
+                        )
+                        
+                        metadata = {
+                            "style_features": style_features,
+                            "style_sample_id": style_sample_id,
+                            "rag_style_context": rag_style_context,
+                            "rag_story_context": response.worldview_context + response.character_context,
+                            "agent_outputs": [output.model_dump() for output in response.agent_outputs],
+                            "workflow_trace": workflow_trace,
+                            "settings": {
+                                "pace": request.pace,
+                                "tone": request.tone,
+                                "style_strength": request.style_strength
+                            }
+                        }
+                        yield f"data: {json.dumps({'type': 'metadata', 'data': metadata}, default=str)}\n\n"
+                        
+                        # 发送正文块
+                        full_content = response.final_content
+                        chunk_size = 5  # 每次发送5个字符，模拟打字
+                        for i in range(0, len(full_content), chunk_size):
+                            chunk = full_content[i:i+chunk_size]
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                            await asyncio.sleep(0.01)
+                        
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    else:
+                        # 转发Agent事件
+                        event_data = event.get("data")
+                        safe_event = {
+                            "type": event["type"],
+                            "agent": event.get("agent"),
+                            "status": event.get("status"),
+                            "data": event_data
+                        }
+                        yield f"data: {json.dumps(safe_event, ensure_ascii=False)}\n\n"
 
             except Exception as e:
-                logger.error(f"事件生成器异常: {e}", exc_info=True)
-                # 尝试发送错误事件
-                try:
-                    error_payload = {"type": "error", "message": str(e)}
-                    yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
-                except Exception as send_error:
-                    logger.error(f"发送错误事件失败: {send_error}")
-                raise
+                logger.error(f"流式生成过程中发生错误: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 

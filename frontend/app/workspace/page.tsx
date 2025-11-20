@@ -727,8 +727,11 @@ function WorkspacePageContent() {
                 flexGrow: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                p: 3,
+                p: { xs: 2, sm: 4, md: 5 },
                 overflow: 'auto',
+                maxWidth: 900,
+                mx: 'auto',
+                width: '100%',
               }}
             >
               {loading ? (
@@ -747,7 +750,13 @@ function WorkspacePageContent() {
                     label="章节标题"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    sx={{ mb: 3 }}
+                    sx={{
+                      mb: 4,
+                      '& .MuiInputBase-root': {
+                        fontSize: '1.5rem',
+                        fontWeight: 500,
+                      },
+                    }}
                     variant="outlined"
                   />
 
@@ -770,7 +779,7 @@ function WorkspacePageContent() {
                       const target = e.target as HTMLTextAreaElement;
                       const start = target.selectionStart;
                       const end = target.selectionEnd;
-                      
+
                       if (start !== end) {
                         setSelectionStart(start);
                         setSelectionEnd(end);
@@ -787,10 +796,14 @@ function WorkspacePageContent() {
                       '& .MuiInputBase-root': {
                         height: '100%',
                         alignItems: 'flex-start',
+                        borderColor: 'divider',
                       },
                       '& .MuiInputBase-input': {
                         height: '100% !important',
                         overflow: 'auto !important',
+                        fontSize: '1rem',
+                        lineHeight: 1.75,
+                        letterSpacing: '0.02em',
                       },
                     }}
                     variant="outlined"
@@ -803,15 +816,21 @@ function WorkspacePageContent() {
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      mt: 2,
-                      p: 2,
-                      bgcolor: 'grey.50',
-                      borderRadius: 1,
+                      mt: 3,
+                      p: 2.5,
+                      bgcolor: 'background.subtle',
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'border.light',
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
                     }}
                   >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton 
-                        size="small" 
+                      <IconButton
+                        size="small"
                         disabled={historyIndex <= 0}
                         onClick={() => {
                           if (historyIndex > 0) {
@@ -823,12 +842,19 @@ function WorkspacePageContent() {
                             }, 100);
                           }
                         }}
+                        sx={{
+                          transition: 'all 0.2s ease',
+                          '&:not(:disabled):hover': {
+                            bgcolor: 'primary.container',
+                            color: 'primary.dark',
+                          },
+                        }}
                       >
-                        <UndoIcon />
+                        <UndoIcon fontSize="small" />
                       </IconButton>
-                      
-                      <IconButton 
-                        size="small" 
+
+                      <IconButton
+                        size="small"
                         disabled={historyIndex >= contentHistory.length - 1}
                         onClick={() => {
                           if (historyIndex < contentHistory.length - 1) {
@@ -840,20 +866,37 @@ function WorkspacePageContent() {
                             }, 100);
                           }
                         }}
+                        sx={{
+                          transition: 'all 0.2s ease',
+                          '&:not(:disabled):hover': {
+                            bgcolor: 'primary.container',
+                            color: 'primary.dark',
+                          },
+                        }}
                       >
-                        <RedoIcon />
+                        <RedoIcon fontSize="small" />
                       </IconButton>
                     </Box>
 
-                    <Typography variant="caption" color="text.secondary">
-                      字数: {content.length}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Chip
+                        label={`${content.length.toLocaleString()} 字`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontWeight: 500 }}
+                      />
+                    </Box>
                   </Box>
                 </>
               ) : (
-                <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>
-                  请从左侧选择一个章节开始编辑
-                </Typography>
+                <Box sx={{ textAlign: 'center', mt: 8 }}>
+                  <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                    请从左侧选择一个章节开始编辑
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    或者创建一个新章节
+                  </Typography>
+                </Box>
               )}
             </Box>
           </Box>
